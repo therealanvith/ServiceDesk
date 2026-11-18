@@ -7,19 +7,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.servicedesk.infrastructure.config.ClockConfig;
+import com.servicedesk.infrastructure.security.DomainUserDetailsService;
+import com.servicedesk.infrastructure.security.JwtAuthenticationFilter;
+import com.servicedesk.infrastructure.security.JwtTokenProvider;
 import com.servicedesk.infrastructure.security.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(HealthController.class)
-@Import({SecurityConfig.class, ClockConfig.class})
+@Import({SecurityConfig.class, ClockConfig.class, JwtAuthenticationFilter.class})
 class HealthControllerTest {
 
   @Autowired private MockMvc mockMvc;
+
+  @MockBean private JwtTokenProvider jwtTokenProvider;
+  @MockBean private DomainUserDetailsService userDetailsService;
 
   @Test
   void healthEndpointShouldReturnStatusUpAndUtcIsoTimestamp() throws Exception {
