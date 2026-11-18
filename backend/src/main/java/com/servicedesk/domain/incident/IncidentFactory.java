@@ -1,0 +1,78 @@
+package com.servicedesk.domain.incident;
+
+import com.servicedesk.domain.incident.state.ReportedState;
+import com.servicedesk.domain.priority.MatrixPriorityStrategy;
+import com.servicedesk.domain.priority.Priority;
+import com.servicedesk.domain.priority.PriorityCalculationStrategy;
+import com.servicedesk.domain.sla.SlaWindow;
+import com.servicedesk.domain.user.UserId;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Creational Factory ensuring consistent instantiation of valid Incident aggregates.
+ */
+public class IncidentFactory {
+
+  private final PriorityCalculationStrategy priorityStrategy;
+  private final Clock clock;
+  private final AtomicLong ticketSequence;
+
+  public IncidentFactory() {
+    this(new MatrixPriorityStrategy(), Clock.systemUTC(), 1000L);
+  }
+
+  public IncidentFactory(PriorityCalculationStrategy priorityStrategy, Clock clock) {
+    this(priorityStrategy, clock, 1000L);
+  }
+
+  public IncidentFactory(
+      PriorityCalculationStrategy priorityStrategy,
+      Clock clock,
+      long initialSequence) {
+    this.priorityStrategy =
+        priorityStrategy != null ? priorityStrategy : new MatrixPriorityStrategy();
+    this.clock = clock != null ? clock : Clock.systemUTC();
+    this.ticketSequence = new AtomicLong(initialSequence);
+  }
+
+  public Incident createIncident(
+      String title,
+      String description,
+      Category category,
+      Impact impact,
+      Urgency urgency,
+      UserId reporterId) {
+    Objects.requireNonNull(title, "Title must not be null");
+    Objects.requireNonNull(description, "Description must not be null");
+    Objects.requireNonNull(category, "Category must not be null");
+    Objects.requireNonNull(impact, "Impact must not be null");
+    Objects.requireNonNull(urgency, "Urgency must not be null");
+    Objects.requireNonNull(reporterId, "Reporter ID must not be null");
+
+    IncidentId incidentId = IncidentId.generate();
+    String incidentNumber = "INC-" + ticketSequence.incrementAndGet();
+    Priority priority = priorityStrategy.calculatePriority(impact, urgency);
+    Instant now = clock.instant();
+    SlaWindow slaWindow = SlaWindow.calculateInitial(priority, now);
+
+    return new Incident(
+        incidentId,
+        incidentNumber,
+        title,
+        description,
+        category,
+        priority,
+        impact,
+        urgency,
+        reporterId,
+        null, // unassigned upon initial creation
+        new ReportedState(),
+        slaWindow,
+        now,
+        now,
+        clock);
+  }
+}
