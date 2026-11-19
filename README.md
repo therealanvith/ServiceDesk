@@ -70,6 +70,15 @@ Ensure the following tools are installed on your workstation:
    | `tech_lead` | `TECHNICIAN` | Charlie Brown | Lead Systems (`NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`) |
    | `admin` | `ADMINISTRATOR` | System Administrator | System Configuration & Strategy Engine |
 
+   > **Note on Existing Databases**: If you previously launched Docker containers before Flyway migration `V6`, you can immediately apply the verified `password123` credentials to your running database:
+   > ```bash
+   > docker compose exec -T postgres psql -U servicedesk_user -d servicedesk < scripts/seed-demo-users.sql
+   > ```
+   > Or restart the backend service to let Flyway execute `V6__fix_demo_user_passwords.sql` automatically:
+   > ```bash
+   > docker compose restart backend
+   > ```
+
 ---
 
 ## Architecture & Implementation Overview

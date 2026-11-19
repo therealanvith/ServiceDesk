@@ -149,6 +149,7 @@ bun run dev
 ```
 
 ### 5.3 Quality & Verification Commands
+- **Seed / Reset Demo Passwords**: `docker compose exec -T postgres psql -U servicedesk_user -d servicedesk < scripts/seed-demo-users.sql` (sets all demo accounts to `password123`)
 - **Backend Architecture & Unit Tests**: `cd backend && ./mvnw test verify` (runs ArchUnit domain boundary checks and unit tests).
 - **Backend Code Formatting**: `cd backend && ./mvnw spotless:apply`
 - **Frontend Linter & Formatter**: `cd frontend && bun run lint:fix`
