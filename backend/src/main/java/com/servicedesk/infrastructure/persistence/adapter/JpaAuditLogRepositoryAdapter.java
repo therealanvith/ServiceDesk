@@ -69,6 +69,16 @@ public class JpaAuditLogRepositoryAdapter implements AuditLogRepository {
         .toList();
   }
 
+  @Override
+  public List<AuditLog> findRecent(int limit) {
+    return auditLogJpaRepository
+        .findAllByOrderByCreatedAtDesc(
+            org.springframework.data.domain.PageRequest.of(0, Math.max(1, limit)))
+        .stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
   private AuditLog toDomain(IncidentAuditLogEntity entity) {
     return new AuditLog(
         entity.getId(),

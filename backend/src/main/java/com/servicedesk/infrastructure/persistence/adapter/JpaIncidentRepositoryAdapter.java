@@ -98,6 +98,15 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
           if (filter.slaStatus() != null) {
             predicates.add(cb.equal(root.get("slaStatus"), filter.slaStatus()));
           }
+          if (filter.serviceId() != null) {
+            predicates.add(cb.equal(root.get("serviceId"), filter.serviceId()));
+          }
+          if (filter.createdFrom() != null) {
+            predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), filter.createdFrom()));
+          }
+          if (filter.createdTo() != null) {
+            predicates.add(cb.lessThan(root.get("createdAt"), filter.createdTo()));
+          }
           if (filter.searchText() != null && !filter.searchText().isBlank()) {
             String pattern = "%" + filter.searchText().trim().toLowerCase() + "%";
             Predicate titleMatch = cb.like(cb.lower(root.get("title")), pattern);
@@ -158,6 +167,10 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
             clock);
 
     incident.setResolutionSummary(entity.getResolutionNotes());
+    incident.setAffectedServiceId(entity.getServiceId());
+    incident.setRespondedAt(entity.getRespondedAt());
+    incident.setEscalatedAt(entity.getEscalatedAt());
+    incident.recordFeedback(entity.getFeedbackRating(), entity.getFeedbackComment());
     incident.setResolvedAt(entity.getResolvedAt());
     incident.setClosedAt(entity.getClosedAt());
 
@@ -208,6 +221,11 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     }
 
     entity.setResolutionNotes(incident.getResolutionSummary());
+    entity.setServiceId(incident.getAffectedServiceId());
+    entity.setRespondedAt(incident.getRespondedAt());
+    entity.setEscalatedAt(incident.getEscalatedAt());
+    entity.setFeedbackRating(incident.getFeedbackRating());
+    entity.setFeedbackComment(incident.getFeedbackComment());
     entity.setResolvedAt(incident.getResolvedAt());
     entity.setClosedAt(incident.getClosedAt());
     entity.setCreatedAt(incident.getCreatedAt());

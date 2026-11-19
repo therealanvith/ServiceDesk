@@ -1,55 +1,114 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { type IncidentDetail, type Priority, type TechnicianItem, api } from "@/lib/apiClient";
-import { useEffect, useState } from "react";
+import { CATEGORY_LABELS, PRIORITY_LABELS } from "@/lib/labels";
+import { type ReactNode, useEffect, useState } from "react";
 
 interface StateActionsProps {
   incident: IncidentDetail;
   currentUserRole: string;
   isReporter: boolean;
+  isAssignee: boolean;
   onUpdate: (updated: IncidentDetail) => void;
 }
+
+type DialogKind =
+  | "assign"
+  | "requestInfo"
+  | "provideInfo"
+  | "resolve"
+  | "cancel"
+  | "override"
+  | "close";
+
+interface TextDialog {
+  title: string;
+  description: string;
+  label: string;
+  placeholder: string;
+  confirm: string;
+  danger?: boolean;
+  submit: (incidentId: string, text: string) => Promise<IncidentDetail>;
+}
+
+const TEXT_DIALOGS: Record<"requestInfo" | "provideInfo" | "resolve" | "cancel", TextDialog> = {
+  requestInfo: {
+    title: "Ask the reporter for details",
+    description: "The SLA clock pauses until they reply.",
+    label: "Question",
+    placeholder: "What do you need to know?",
+    confirm: "Send question",
+    submit: (id, text) => api.requestInfo(id, text),
+  },
+  provideInfo: {
+    title: "Reply to the technician",
+    description: "Work resumes as soon as you send this.",
+    label: "Your reply",
+    placeholder: "Answer the technician's question.",
+    confirm: "Send reply",
+    submit: (id, text) => api.provideInfo(id, text),
+  },
+  resolve: {
+    title: "Resolve ticket",
+    description: "The reporter will be asked to confirm the fix.",
+    label: "What fixed it?",
+    placeholder: "Describe the cause and the fix.",
+    confirm: "Mark resolved",
+    submit: (id, text) => api.resolveIncident(id, text),
+  },
+  cancel: {
+    title: "Cancel ticket",
+    description: "Cancelled tickets can’t be reopened.",
+    label: "Reason",
+    placeholder: "Why is this ticket being cancelled?",
+    confirm: "Cancel ticket",
+    danger: true,
+    submit: (id, text) => api.cancelIncident(id, text),
+  },
+};
 
 export function StateActions({
   incident,
   currentUserRole,
   isReporter,
+  isAssignee,
   onUpdate,
 }: StateActionsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
 
-  // Dialog state
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [showRequestInfoModal, setShowRequestInfoModal] = useState(false);
-  const [showProvideInfoModal, setShowProvideInfoModal] = useState(false);
-  const [showResolveModal, setShowResolveModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
-
-  // Form fields
-  const [questionText, setQuestionText] = useState("");
-  const [answerText, setAnswerText] = useState("");
-  const [resolutionNotes, setResolutionNotes] = useState("");
-  const [cancelReason, setCancelReason] = useState("");
+  const [text, setText] = useState("");
+  const [rating, setRating] = useState(0);
   const [overridePriority, setOverridePriority] = useState<Priority>("P1_CRITICAL");
-  const [overrideRemarks, setOverrideRemarks] = useState("");
   const [selectedTechId, setSelectedTechId] = useState("");
   const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
 
-  const isTechOrAdmin = currentUserRole === "TECHNICIAN" || currentUserRole === "ADMINISTRATOR";
-  const isAdmin = currentUserRole === "ADMINISTRATOR";
+  // Assigning is an administrator decision; technicians only see their own tickets.
+  const isAdmin = currentUserRole === "ADMINISTRATOR" || currentUserRole === "ROOT";
+  const isTechOrAdmin = isAdmin;
+  // Mirrors the backend: only the assigned technician (or an admin) works the ticket.
+  const canWork = isAdmin || (currentUserRole === "TECHNICIAN" && isAssignee);
+  const status = incident.status;
+  const terminal = status === "CLOSED" || status === "CANCELLED";
 
   useEffect(() => {
-    if (showAssignModal && isTechOrAdmin) {
+    if (dialog === "assign" && isTechOrAdmin) {
       api
         .listTechnicians()
         .then(setTechnicians)
         .catch(() => {});
     }
-  }, [showAssignModal, isTechOrAdmin]);
+  }, [dialog, isTechOrAdmin]);
+
+  const open = (kind: DialogKind) => {
+    setText("");
+    setDialog(kind);
+  };
 
   const handleAction = async (actionFn: () => Promise<IncidentDetail>) => {
+    setDialog(null);
     setLoading(true);
     setError(null);
     try {
@@ -62,479 +121,251 @@ export function StateActions({
     }
   };
 
-  return (
-    <div
-      style={{
-        backgroundColor: "var(--bg-surface)",
-        border: "1px solid var(--border-color)",
-        borderRadius: "6px",
-        padding: "1.25rem",
-        marginBottom: "1.5rem",
-      }}
+  const primary: ReactNode[] = [];
+  const secondary: ReactNode[] = [];
+  const btn = (key: string, label: string, onClick: () => void, variant = "") => (
+    <button
+      key={key}
+      type="button"
+      className={`btn btn-block ${variant}`}
+      onClick={onClick}
+      disabled={loading}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "1rem",
-        }}
-      >
-        <h3
-          style={{
-            fontSize: "0.9375rem",
-            fontWeight: 600,
-            color: "var(--text-primary)",
-          }}
-        >
-          Lifecycle Actions (State Pattern)
-        </h3>
-        <span
-          style={{
-            fontSize: "0.75rem",
-            color: "var(--text-muted)",
-          }}
-        >
-          Current State: <strong>{incident.status}</strong>
-        </span>
-      </div>
+      {label}
+    </button>
+  );
 
+  if (status === "REPORTED" && isTechOrAdmin) {
+    primary.push(btn("assign", "Assign", () => open("assign"), "btn-primary"));
+  }
+  if (status === "ASSIGNED" && canWork) {
+    primary.push(
+      btn(
+        "start",
+        "Start work",
+        () => handleAction(() => api.startWork(incident.id)),
+        "btn-primary"
+      )
+    );
+  }
+  if (status === "IN_PROGRESS" && canWork) {
+    primary.push(btn("resolve", "Resolve", () => open("resolve"), "btn-primary"));
+    secondary.push(btn("request", "Ask reporter for details", () => open("requestInfo")));
+  }
+  if (status === "PENDING_INFO" && (isReporter || isAdmin)) {
+    primary.push(btn("provide", "Reply with details", () => open("provideInfo"), "btn-primary"));
+  }
+  if (status === "RESOLVED" && (isReporter || isAdmin)) {
+    primary.push(
+      btn(
+        "close",
+        "Confirm fix and close",
+        () => {
+          setRating(0);
+          open("close");
+        },
+        "btn-primary"
+      )
+    );
+  }
+  if ((status === "ASSIGNED" || status === "IN_PROGRESS") && isTechOrAdmin) {
+    secondary.push(btn("reassign", "Reassign", () => open("assign")));
+  }
+  if (isAdmin && !terminal) {
+    secondary.push(btn("override", "Change priority", () => open("override")));
+  }
+  if ((status === "REPORTED" && (isReporter || isAdmin)) || (status === "ASSIGNED" && isAdmin)) {
+    secondary.push(btn("cancel", "Cancel ticket", () => open("cancel"), "btn-danger"));
+  }
+
+  const textDialog =
+    dialog && dialog in TEXT_DIALOGS ? TEXT_DIALOGS[dialog as keyof typeof TEXT_DIALOGS] : null;
+
+  let note: string | null = null;
+  if (terminal) {
+    note = status === "CLOSED" ? "This ticket is closed." : "This ticket was cancelled.";
+  } else if (primary.length + secondary.length === 0) {
+    note =
+      status === "RESOLVED"
+        ? "Waiting for the reporter to confirm the fix."
+        : status === "PENDING_INFO"
+          ? "Waiting for the reporter to reply."
+          : "Nothing for you to do here right now.";
+  }
+
+  return (
+    <section className="card card-body" aria-label="Actions">
       {error && (
-        <div
-          style={{
-            backgroundColor: "#fef2f2",
-            color: "#b91c1c",
-            padding: "0.5rem 0.75rem",
-            borderRadius: "4px",
-            fontSize: "0.8125rem",
-            marginBottom: "1rem",
-            border: "1px solid #fecaca",
-          }}
-        >
+        <p className="alert" role="alert" style={{ marginBottom: 10 }}>
           {error}
+        </p>
+      )}
+      {note ? (
+        <p className="actions-note">{note}</p>
+      ) : (
+        <div className="actions">
+          {primary}
+          {secondary}
         </div>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-        {/* REPORTED STATE ACTIONS */}
-        {incident.status === "REPORTED" && (
-          <>
-            {isTechOrAdmin && (
-              <button
-                type="button"
-                onClick={() => setShowAssignModal(true)}
-                disabled={loading}
-                style={primaryBtnStyle}
-              >
-                Assign Technician
-              </button>
-            )}
-            {(isReporter || isAdmin) && (
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(true)}
-                disabled={loading}
-                style={dangerBtnStyle}
-              >
-                Cancel Incident
-              </button>
-            )}
-          </>
-        )}
-
-        {/* ASSIGNED STATE ACTIONS */}
-        {incident.status === "ASSIGNED" && (
-          <>
-            {isTechOrAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleAction(() => api.startWork(incident.id))}
-                  disabled={loading}
-                  style={primaryBtnStyle}
-                >
-                  Start Work (IN_PROGRESS)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAssignModal(true)}
-                  disabled={loading}
-                  style={secondaryBtnStyle}
-                >
-                  Reassign
-                </button>
-              </>
-            )}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(true)}
-                disabled={loading}
-                style={dangerBtnStyle}
-              >
-                Cancel Incident
-              </button>
-            )}
-          </>
-        )}
-
-        {/* IN_PROGRESS STATE ACTIONS */}
-        {incident.status === "IN_PROGRESS" && isTechOrAdmin && (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowRequestInfoModal(true)}
-              disabled={loading}
-              style={warningBtnStyle}
-            >
-              Request Information (Pause SLA)
+      {dialog === "close" && (
+        <Modal title="Confirm the fix" onClose={() => setDialog(null)}>
+          <p>Closing confirms the problem is solved. Tickets can’t be reopened after closing.</p>
+          {isReporter && (
+            <fieldset className="field rating">
+              <legend>How was the support? (optional)</legend>
+              <div className="rating-options">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <label key={n} className={`rating-option ${rating === n ? "is-selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="rating"
+                      value={n}
+                      checked={rating === n}
+                      onChange={() => setRating(n)}
+                    />
+                    {n}
+                  </label>
+                ))}
+              </div>
+              <span className="field-hint">1 = poor, 5 = excellent</span>
+            </fieldset>
+          )}
+          <label className="field">
+            Comment <span className="field-hint">(optional)</span>
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+          </label>
+          <div className="row-end">
+            <button type="button" className="btn" onClick={() => setDialog(null)}>
+              Back
             </button>
             <button
               type="button"
-              onClick={() => setShowResolveModal(true)}
-              disabled={loading}
-              style={successBtnStyle}
+              className="btn btn-primary"
+              onClick={() =>
+                handleAction(() =>
+                  api.closeIncident(incident.id, {
+                    rating: isReporter && rating ? rating : undefined,
+                    remarks: text.trim() || undefined,
+                  })
+                )
+              }
             >
-              Resolve Incident
+              Close ticket
             </button>
-            <button
-              type="button"
-              onClick={() => setShowAssignModal(true)}
-              disabled={loading}
-              style={secondaryBtnStyle}
-            >
-              Reassign
-            </button>
-          </>
-        )}
+          </div>
+        </Modal>
+      )}
 
-        {/* PENDING_INFO STATE ACTIONS */}
-        {incident.status === "PENDING_INFO" && (
-          <button
-            type="button"
-            onClick={() => setShowProvideInfoModal(true)}
-            disabled={loading}
-            style={successBtnStyle}
-          >
-            Provide Information (Resume SLA)
-          </button>
-        )}
-
-        {/* RESOLVED STATE ACTIONS */}
-        {incident.status === "RESOLVED" && (isReporter || isAdmin) && (
-          <button
-            type="button"
-            onClick={() => handleAction(() => api.closeIncident(incident.id))}
-            disabled={loading}
-            style={successBtnStyle}
-          >
-            Confirm Resolution & Close
-          </button>
-        )}
-
-        {/* TERMINAL STATES */}
-        {(incident.status === "CLOSED" || incident.status === "CANCELLED") && (
-          <span
-            style={{
-              fontSize: "0.8125rem",
-              color: "var(--text-muted)",
-              fontStyle: "italic",
-            }}
-          >
-            Ticket is in terminal state ({incident.status}). Invariants prevent further mutations.
-          </span>
-        )}
-
-        {/* ADMIN PRIORITY OVERRIDE */}
-        {isAdmin && incident.status !== "CLOSED" && incident.status !== "CANCELLED" && (
-          <button
-            type="button"
-            onClick={() => setShowOverrideModal(true)}
-            disabled={loading}
-            style={{ ...secondaryBtnStyle, marginLeft: "auto" }}
-          >
-            Override Priority
-          </button>
-        )}
-      </div>
-
-      {/* MODAL: ASSIGN */}
-      {showAssignModal && (
-        <Modal title="Assign Incident" onClose={() => setShowAssignModal(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Select a technician or leave empty to trigger automated assignment strategy.
-            </p>
-            <select
-              value={selectedTechId}
-              onChange={(e) => setSelectedTechId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">Automated Strategy Assignment</option>
+      {dialog === "assign" && (
+        <Modal title="Assign ticket" onClose={() => setDialog(null)}>
+          <label className="field">
+            Technician
+            <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)}>
+              <option value="">Pick automatically</option>
               {technicians.map((tech) => (
                 <option key={tech.id} value={tech.id}>
-                  {tech.fullName} ({tech.skills.join(", ")}) — {tech.activeTicketsCount} active
+                  {tech.fullName} — {tech.skills.map((s) => CATEGORY_LABELS[s] ?? s).join(", ")} ·{" "}
+                  {tech.activeTicketsCount} open
                 </option>
               ))}
             </select>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowAssignModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAssignModal(false);
-                  handleAction(() => api.assignIncident(incident.id, selectedTechId || undefined));
-                }}
-                style={primaryBtnStyle}
-              >
-                Confirm Assignment
-              </button>
-            </div>
+            <span className="field-hint">Automatic assignment uses the rule set in Settings.</span>
+          </label>
+          <div className="row-end">
+            <button type="button" className="btn" onClick={() => setDialog(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() =>
+                handleAction(() => api.assignIncident(incident.id, selectedTechId || undefined))
+              }
+            >
+              Assign
+            </button>
           </div>
         </Modal>
       )}
 
-      {/* MODAL: REQUEST INFO */}
-      {showRequestInfoModal && (
-        <Modal
-          title="Request Information (Pauses SLA)"
-          onClose={() => setShowRequestInfoModal(false)}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Ask the reporter for clarification. The SLA resolution countdown will pause until they
-              respond.
-            </p>
+      {dialog === "override" && (
+        <Modal title="Change priority" onClose={() => setDialog(null)}>
+          <label className="field">
+            New priority
+            <select
+              value={overridePriority}
+              onChange={(e) => setOverridePriority(e.target.value as Priority)}
+            >
+              {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {value.slice(0, 2)} · {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Reason
             <textarea
               rows={3}
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              placeholder="e.g., Which room port or switch are you connected to?"
-              style={inputStyle}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Why is the priority changing?"
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowRequestInfoModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!questionText.trim()}
-                onClick={() => {
-                  setShowRequestInfoModal(false);
-                  handleAction(() => api.requestInfo(incident.id, questionText.trim()));
-                }}
-                style={warningBtnStyle}
-              >
-                Send Request
-              </button>
-            </div>
+            <span className="field-hint">Saved to the ticket’s history.</span>
+          </label>
+          <div className="row-end">
+            <button type="button" className="btn" onClick={() => setDialog(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!text.trim()}
+              onClick={() =>
+                handleAction(() => api.overridePriority(incident.id, overridePriority, text.trim()))
+              }
+            >
+              Change priority
+            </button>
           </div>
         </Modal>
       )}
 
-      {/* MODAL: PROVIDE INFO */}
-      {showProvideInfoModal && (
-        <Modal
-          title="Provide Information (Resumes SLA)"
-          onClose={() => setShowProvideInfoModal(false)}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Enter the requested details. Work status will return to IN_PROGRESS and SLA timers
-              will resume.
-            </p>
+      {textDialog && (
+        <Modal title={textDialog.title} onClose={() => setDialog(null)}>
+          <p>{textDialog.description}</p>
+          <label className="field">
+            {textDialog.label}
             <textarea
-              rows={3}
-              value={answerText}
-              onChange={(e) => setAnswerText(e.target.value)}
-              placeholder="e.g., Cable verified and re-seated; port LED is solid green."
-              style={inputStyle}
+              rows={4}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={textDialog.placeholder}
             />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowProvideInfoModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!answerText.trim()}
-                onClick={() => {
-                  setShowProvideInfoModal(false);
-                  handleAction(() => api.provideInfo(incident.id, answerText.trim()));
-                }}
-                style={successBtnStyle}
-              >
-                Submit Response
-              </button>
-            </div>
+          </label>
+          <div className="row-end">
+            <button type="button" className="btn" onClick={() => setDialog(null)}>
+              Back
+            </button>
+            <button
+              type="button"
+              className={`btn ${textDialog.danger ? "btn-danger" : "btn-primary"}`}
+              disabled={!text.trim()}
+              onClick={() => handleAction(() => textDialog.submit(incident.id, text.trim()))}
+            >
+              {textDialog.confirm}
+            </button>
           </div>
         </Modal>
       )}
-
-      {/* MODAL: RESOLVE */}
-      {showResolveModal && (
-        <Modal title="Resolve Incident" onClose={() => setShowResolveModal(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Summarize the diagnostic resolution and steps taken to remediate the issue.
-            </p>
-            <textarea
-              rows={3}
-              value={resolutionNotes}
-              onChange={(e) => setResolutionNotes(e.target.value)}
-              placeholder="e.g., Replaced faulty Cat6 patch cable and rebooted local switch SW-C304."
-              style={inputStyle}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowResolveModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!resolutionNotes.trim()}
-                onClick={() => {
-                  setShowResolveModal(false);
-                  handleAction(() => api.resolveIncident(incident.id, resolutionNotes.trim()));
-                }}
-                style={successBtnStyle}
-              >
-                Mark Resolved
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* MODAL: CANCEL */}
-      {showCancelModal && (
-        <Modal title="Cancel Incident" onClose={() => setShowCancelModal(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Provide the cancellation justification. This transition is immutable.
-            </p>
-            <textarea
-              rows={3}
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="e.g., Duplicate ticket reported earlier."
-              style={inputStyle}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowCancelModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                disabled={!cancelReason.trim()}
-                onClick={() => {
-                  setShowCancelModal(false);
-                  handleAction(() => api.cancelIncident(incident.id, cancelReason.trim()));
-                }}
-                style={dangerBtnStyle}
-              >
-                Confirm Cancel
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* MODAL: OVERRIDE PRIORITY */}
-      {showOverrideModal && (
-        <Modal title="Administrator Priority Override" onClose={() => setShowOverrideModal(false)}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div>
-              <label
-                htmlFor="override-priority-select"
-                style={{
-                  display: "block",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                New Priority Tier
-              </label>
-              <select
-                id="override-priority-select"
-                value={overridePriority}
-                onChange={(e) => setOverridePriority(e.target.value as Priority)}
-                style={inputStyle}
-              >
-                <option value="P1_CRITICAL">P1 Critical</option>
-                <option value="P2_HIGH">P2 High</option>
-                <option value="P3_MEDIUM">P3 Medium</option>
-                <option value="P4_LOW">P4 Low</option>
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="override-remarks"
-                style={{
-                  display: "block",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                Justification Remarks (Recorded in Audit Ledger)
-              </label>
-              <textarea
-                id="override-remarks"
-                rows={3}
-                value={overrideRemarks}
-                onChange={(e) => setOverrideRemarks(e.target.value)}
-                placeholder="e.g., Dean office request; escalating priority to P1."
-                style={inputStyle}
-              />
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={() => setShowOverrideModal(false)}
-                style={secondaryBtnStyle}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!overrideRemarks.trim()}
-                onClick={() => {
-                  setShowOverrideModal(false);
-                  handleAction(() =>
-                    api.overridePriority(incident.id, overridePriority, overrideRemarks.trim())
-                  );
-                }}
-                style={primaryBtnStyle}
-              >
-                Apply Override
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -545,110 +376,32 @@ function Modal({
 }: {
   title: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(15, 23, 42, 0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-        padding: "1rem",
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          borderRadius: "8px",
-          width: "100%",
-          maxWidth: "480px",
-          padding: "1.5rem",
-          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "1rem",
-          }}
-        >
-          <h4 style={{ fontSize: "1rem", fontWeight: 600 }}>{title}</h4>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: "1.25rem",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-            }}
-          >
-            &times;
+      <dialog open className="modal" aria-modal="true" aria-labelledby="modal-title">
+        <div className="modal-header">
+          <h2 id="modal-title">{title}</h2>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={16} />
           </button>
         </div>
-        {children}
-      </div>
+        <div className="modal-body">{children}</div>
+      </dialog>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.5rem 0.75rem",
-  borderRadius: "4px",
-  border: "1px solid var(--border-color)",
-  fontSize: "0.875rem",
-  fontFamily: "inherit",
-  backgroundColor: "var(--bg-primary)",
-  color: "var(--text-primary)",
-};
-
-const baseBtnStyle: React.CSSProperties = {
-  padding: "0.45rem 0.85rem",
-  borderRadius: "4px",
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  cursor: "pointer",
-  border: "1px solid transparent",
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  ...baseBtnStyle,
-  backgroundColor: "var(--accent)",
-  color: "white",
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  ...baseBtnStyle,
-  backgroundColor: "var(--bg-primary)",
-  borderColor: "var(--border-color)",
-  color: "var(--text-primary)",
-};
-
-const warningBtnStyle: React.CSSProperties = {
-  ...baseBtnStyle,
-  backgroundColor: "#fef3c7",
-  borderColor: "#fde68a",
-  color: "#92400e",
-};
-
-const successBtnStyle: React.CSSProperties = {
-  ...baseBtnStyle,
-  backgroundColor: "#d1fae5",
-  borderColor: "#a7f3d0",
-  color: "#065f46",
-};
-
-const dangerBtnStyle: React.CSSProperties = {
-  ...baseBtnStyle,
-  backgroundColor: "#fee2e2",
-  borderColor: "#fecaca",
-  color: "#991b1b",
-};

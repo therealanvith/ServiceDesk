@@ -23,4 +23,9 @@ public record IncidentDetailResponse(
     SlaWindowResponse slaWindow,
     String resolutionNotes,
     Instant createdAt,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    ServiceResponse service,
+    Instant respondedAt,
+    Instant escalatedAt,
+    Integer feedbackRating,
+    String feedbackComment) {}

@@ -1,198 +1,117 @@
 "use client";
-
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/apiClient";
+import { ROLE_LABELS, isAdmin } from "@/lib/labels";
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const DEMO_ACCOUNTS = [
-  { username: "employee1", label: "Alan Turing (Employee)", role: "EMPLOYEE" },
-  { username: "tech_network", label: "Alice Smith (Network Tech)", role: "TECHNICIAN" },
-  { username: "tech_hardware", label: "Bob Jones (Hardware Tech)", role: "TECHNICIAN" },
-  { username: "tech_lead", label: "Charlie Brown (Lead Tech)", role: "TECHNICIAN" },
-  { username: "admin", label: "System Administrator (Admin)", role: "ADMINISTRATOR" },
-];
+const UNREAD_POLL_MS = 60_000;
 
 export function Navbar() {
-  const { user, login, logout } = useAuth();
-  const [switching, setSwitching] = useState(false);
+  const { user, logout } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [unread, setUnread] = useState(0);
 
-  const handleQuickSwitch = async (username: string) => {
-    setSwitching(true);
-    try {
-      await login(username, "password123");
-    } finally {
-      setSwitching(false);
+  // Light polling keeps the inbox badge current without a websocket.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check whenever the page changes
+  useEffect(() => {
+    if (!user) {
+      setUnread(0);
+      return;
     }
-  };
+    let active = true;
+    const load = () =>
+      api
+        .getNotifications()
+        .then((inbox) => active && setUnread(inbox.unreadCount))
+        .catch(() => {});
+    load();
+    const timer = window.setInterval(load, UNREAD_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [user, pathname]);
+
+  const links = !user
+    ? []
+    : [
+        {
+          href: "/",
+          label: isAdmin(user.role)
+            ? "All incidents"
+            : user.role === "TECHNICIAN"
+              ? "My queue"
+              : "My tickets",
+        },
+        { href: "/incidents/new", label: "Report an issue" },
+        ...(isAdmin(user.role)
+          ? [
+              { href: "/reports", label: "Reports" },
+              { href: "/audit", label: "Audit log" },
+              { href: "/admin/users", label: "Users" },
+              { href: "/admin", label: "Settings" },
+            ]
+          : []),
+      ];
+
+  const isActive = (href: string) =>
+    href === "/"
+      ? pathname === "/" || (pathname.startsWith("/incidents/") && pathname !== "/incidents/new")
+      : pathname === href;
 
   return (
-    <header
-      style={{
-        backgroundColor: "var(--bg-surface)",
-        borderBottom: "1px solid var(--border-color)",
-        padding: "0.875rem 2rem",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "1100px",
-          margin: "0 auto",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: "1.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "2rem" }}>
-          <Link
-            href="/"
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              gap: "0.4rem",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "1.25rem",
-                fontWeight: 700,
-                letterSpacing: "-0.03em",
-                color: "var(--text-primary)",
-              }}
-            >
-              ServiceDesk
-            </span>
-            <span
-              style={{
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                color: "var(--accent)",
-                padding: "0.1rem 0.4rem",
-                backgroundColor: "#eff6ff",
-                borderRadius: "4px",
-              }}
-            >
-              ITSM
-            </span>
-          </Link>
-
-          <nav
-            style={{ display: "flex", alignItems: "center", gap: "1.25rem", fontSize: "0.875rem" }}
-          >
+    <header className="topbar">
+      <div className="topbar-inner">
+        <Link href="/" className="brand">
+          ServiceDesk
+        </Link>
+        <nav className="nav" aria-label="Main">
+          {links.map((link) => (
             <Link
-              href="/"
-              style={{
-                color: "var(--text-secondary)",
-                fontWeight: 500,
-              }}
+              key={link.href}
+              href={link.href}
+              className="nav-link"
+              aria-current={isActive(link.href) ? "page" : undefined}
             >
-              Incidents
+              {link.label}
             </Link>
+          ))}
+        </nav>
+        <div className="topbar-end">
+          {user && (
             <Link
-              href="/incidents/new"
-              style={{
-                color: "var(--text-secondary)",
-                fontWeight: 500,
-              }}
+              href="/notifications"
+              className="inbox-link"
+              aria-current={pathname === "/notifications" ? "page" : undefined}
+              aria-label={unread ? `Inbox, ${unread} unread` : "Inbox"}
             >
-              + Report Incident
+              Inbox
+              {unread > 0 && <span className="badge">{unread > 99 ? "99+" : unread}</span>}
             </Link>
-            {user?.role === "ADMINISTRATOR" && (
-              <Link
-                href="/admin"
-                style={{
-                  color: "var(--text-secondary)",
-                  fontWeight: 500,
-                }}
-              >
-                Administration
-              </Link>
-            )}
-          </nav>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {/* Quick Account Switcher (Evaluator Demo Tool) */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            <label
-              htmlFor="demo-user-select"
-              style={{
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-              }}
-            >
-              Demo Switch:
-            </label>
-            <select
-              id="demo-user-select"
-              value={user?.username ?? ""}
-              onChange={(e) => handleQuickSwitch(e.target.value)}
-              disabled={switching}
-              style={{
-                fontSize: "0.8125rem",
-                padding: "0.3rem 0.6rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-primary)",
-                color: "var(--text-primary)",
-                cursor: "pointer",
-              }}
-            >
-              {!user && <option value="">Select Persona...</option>}
-              {DEMO_ACCOUNTS.map((acc) => (
-                <option key={acc.username} value={acc.username}>
-                  {acc.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* User Status / Logout */}
-          {user ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <div style={{ textAlign: "right", lineHeight: 1.2 }}>
-                <div style={{ fontSize: "0.8125rem", fontWeight: 600 }}>{user.fullName}</div>
-                <div
-                  style={{
-                    fontSize: "0.6875rem",
-                    color: "var(--text-muted)",
-                    fontWeight: 500,
-                  }}
-                >
-                  {user.role}
-                </div>
-              </div>
+          )}
+          <ThemeToggle />
+          {user && (
+            <div className="user-chip">
+              <span className="user-chip-text">
+                <span className="user-chip-name">{user.fullName}</span>
+                <br />
+                <span className="user-chip-role">{ROLE_LABELS[user.role]}</span>
+              </span>
               <button
                 type="button"
-                onClick={logout}
-                style={{
-                  fontSize: "0.75rem",
-                  padding: "0.3rem 0.6rem",
-                  borderRadius: "4px",
-                  border: "1px solid var(--border-color)",
-                  backgroundColor: "transparent",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
+                className="signout"
+                onClick={() => {
+                  logout();
+                  router.replace("/login");
                 }}
               >
-                Sign Out
+                Sign out
               </button>
             </div>
-          ) : (
-            <Link
-              href="/login"
-              style={{
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                color: "white",
-                backgroundColor: "var(--accent)",
-                padding: "0.4rem 0.85rem",
-                borderRadius: "4px",
-              }}
-            >
-              Sign In
-            </Link>
           )}
         </div>
       </div>

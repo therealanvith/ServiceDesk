@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -39,6 +40,15 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ErrorResponse> handleInvalidStateTransition(
       InvalidStateTransitionException ex, HttpServletRequest request) {
     return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(OptimisticLockingFailureException.class)
+  public ResponseEntity<ErrorResponse> handleConcurrentUpdate(
+      OptimisticLockingFailureException ex, HttpServletRequest request) {
+    return buildResponse(
+        HttpStatus.CONFLICT,
+        "This ticket was just changed by someone else. Reload it and try again.",
+        request);
   }
 
   @ExceptionHandler({IncidentNotFoundException.class, UserNotFoundException.class})

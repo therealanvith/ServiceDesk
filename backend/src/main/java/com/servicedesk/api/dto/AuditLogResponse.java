@@ -12,4 +12,5 @@ public record AuditLogResponse(
     String oldValue,
     String newValue,
     String remarks,
-    Instant timestamp) {}
+    Instant timestamp,
+    String incidentNumber) {}

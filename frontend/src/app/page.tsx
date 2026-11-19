@@ -1,72 +1,115 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { PriorityBadge } from "@/components/PriorityBadge";
-import { type FilterState, SearchFilters } from "@/components/SearchFilters";
+import { EMPTY_FILTERS, type FilterState, SearchFilters } from "@/components/SearchFilters";
 import { SlaBadge } from "@/components/SlaBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/context/AuthContext";
 import {
   type HealthResponse,
   type IncidentSummary,
+  type ItService,
+  type TechnicianItem,
+  type Workload,
   api,
   checkBackendHealth,
 } from "@/lib/apiClient";
+import { CATEGORY_LABELS, isAdmin, timeAgo } from "@/lib/labels";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-const initialFilters: FilterState = {
-  status: "",
-  priority: "",
-  category: "",
-  slaStatus: "",
-  searchText: "",
-};
+const PAGE_SIZE = 15;
 
 export default function IncidentsDashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [incidents, setIncidents] = useState<IncidentSummary[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalElements, setTotalElements] = useState(0);
-  const [page, setPage] = useState(0);
-  const [filters, setFilters] = useState<FilterState>(initialFilters);
-  const [loading, setLoading] = useState(true);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
 
-  // Load backend health
+  const [page, setPage] = useState(0);
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [services, setServices] = useState<ItService[]>([]);
+  const [technicians, setTechnicians] = useState<TechnicianItem[] | undefined>();
+  const [workload, setWorkload] = useState<Workload | null>(null);
+
+  const role = user?.role;
+  const admin = isAdmin(role);
+
   useEffect(() => {
     checkBackendHealth()
       .then(setHealth)
       .catch(() => {});
   }, []);
 
-  const loadIncidents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.listIncidents({
-        status: filters.status || undefined,
-        priority: filters.priority || undefined,
-        category: filters.category || undefined,
-        slaStatus: filters.slaStatus || undefined,
-        searchText: filters.searchText.trim() || undefined,
-        page,
-        size: 15,
-      });
-      setIncidents(res.content);
-      setTotalPages(res.totalPages || 1);
-      setTotalElements(res.totalElements);
-    } catch {
-      setIncidents([]);
-      setTotalPages(1);
-      setTotalElements(0);
-    } finally {
-      setLoading(false);
+  // Lookup data for the filters, and a technician's own workload summary.
+  useEffect(() => {
+    if (!role) return;
+    api
+      .listServices(true)
+      .then(setServices)
+      .catch(() => {});
+    if (role === "ADMINISTRATOR" || role === "ROOT") {
+      api
+        .listTechnicians()
+        .then(setTechnicians)
+        .catch(() => {});
     }
-  }, [filters, page]);
+    if (role === "TECHNICIAN") {
+      api
+        .getMyWorkload()
+        .then(setWorkload)
+        .catch(() => {});
+    }
+  }, [role]);
 
   useEffect(() => {
-    loadIncidents();
-  }, [loadIncidents]);
+    let active = true;
+    setError(null);
+    if (authLoading || !user) {
+      setLoading(authLoading);
+      return;
+    }
+    setLoading(true);
+    const loadIncidents = async () => {
+      try {
+        const res = await api.listIncidents({
+          status: filters.status || undefined,
+          priority: filters.priority || undefined,
+          category: filters.category || undefined,
+          slaStatus: filters.slaStatus || undefined,
+          serviceId: filters.serviceId || undefined,
+          assigneeId: filters.assigneeId || undefined,
+          createdFrom: filters.createdFrom || undefined,
+          createdTo: filters.createdTo || undefined,
+          searchText: filters.searchText.trim() || undefined,
+          page,
+          size: PAGE_SIZE,
+        });
+        if (!active) return;
+        setIncidents(res.content);
+        setTotalPages(res.totalPages || 1);
+        setTotalElements(res.totalElements);
+      } catch (err: unknown) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Unable to load incidents");
+        setIncidents([]);
+        setTotalPages(1);
+        setTotalElements(0);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    const pending = window.setTimeout(loadIncidents, filters.searchText ? 220 : 0);
+    return () => {
+      active = false;
+      window.clearTimeout(pending);
+    };
+  }, [filters, page, user, authLoading]);
 
   const handleFilterChange = (updated: FilterState) => {
     setFilters(updated);
@@ -74,329 +117,251 @@ export default function IncidentsDashboardPage() {
   };
 
   const handleResetFilters = () => {
-    setFilters(initialFilters);
+    setFilters(EMPTY_FILTERS);
     setPage(0);
   };
 
+  const reloadQueue = () => {
+    setFilters((current) => ({ ...current }));
+    void checkBackendHealth().then(setHealth);
+    if (role === "TECHNICIAN")
+      api
+        .getMyWorkload()
+        .then(setWorkload)
+        .catch(() => {});
+  };
+
+  if (authLoading || !user) {
+    return <output className="empty">Loading…</output>;
+  }
+
+  const filtered = Object.values(filters).some(Boolean);
+  const title = admin ? "All incidents" : role === "TECHNICIAN" ? "My queue" : "My tickets";
+  const subtitle = admin
+    ? "Every ticket across the organisation."
+    : role === "TECHNICIAN"
+      ? "Tickets assigned to you."
+      : "Problems you have reported and where they stand.";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* Top Banner: Service Health & User Persona Status */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "1rem",
-          paddingBottom: "1rem",
-          borderBottom: "1px solid var(--border-color)",
-        }}
-      >
+    <>
+      {health?.status === "DOWN" && (
+        <p className="alert" style={{ marginBottom: 16 }}>
+          The service is not responding. Data shown may be out of date.
+        </p>
+      )}
+      <div className="page-header">
         <div>
-          <h1
-            style={{
-              fontSize: "1.5rem",
-              fontWeight: 700,
-              letterSpacing: "-0.03em",
-              color: "var(--text-primary)",
-              marginBottom: "0.25rem",
-            }}
-          >
-            Incident Management & Triage
+          <h1>
+            {title}
+            {!loading && !error && <span className="count">{totalElements}</span>}
           </h1>
-          <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-            {user ? (
-              <>
-                Logged in as <strong>{user.fullName}</strong> ({user.role}) &bull;{" "}
-                {user.role === "EMPLOYEE"
-                  ? "Displaying your reported tickets"
-                  : "Displaying system-wide incident queues"}
-              </>
-            ) : (
-              "Viewing public incident directory. Sign in to submit tickets and perform actions."
-            )}
-          </p>
+          <p>{subtitle}</p>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              padding: "0.25rem 0.6rem",
-              borderRadius: "9999px",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              fontFamily: "var(--font-mono)",
-              backgroundColor:
-                health?.status === "UP" ? "var(--status-up-bg)" : "var(--status-down-bg)",
-              color: health?.status === "UP" ? "var(--status-up-text)" : "var(--status-down-text)",
-              border: `1px solid ${
-                health?.status === "UP" ? "var(--status-up-border)" : "var(--status-down-border)"
-              }`,
-            }}
-          >
-            <span>●</span> Backend: {health?.status ?? "CHECKING"}
-          </span>
-
-          <Link
-            href="/incidents/new"
-            style={{
-              backgroundColor: "var(--accent)",
-              color: "white",
-              padding: "0.5rem 1rem",
-              borderRadius: "4px",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.4rem",
-            }}
-          >
-            + Report Incident
-          </Link>
-        </div>
+        <Link className="btn btn-primary" href="/incidents/new">
+          <Icon name="plus" size={15} />
+          Report an issue
+        </Link>
       </div>
 
-      {/* 5+ Filter Bar */}
-      <SearchFilters filters={filters} onChange={handleFilterChange} onReset={handleResetFilters} />
+      {workload && (
+        <dl className="stat-strip" aria-label="Your workload">
+          <div>
+            <dt>Open</dt>
+            <dd>{workload.active}</dd>
+          </div>
+          <div>
+            <dt>In progress</dt>
+            <dd>{workload.inProgress}</dd>
+          </div>
+          <div>
+            <dt>Waiting on reporter</dt>
+            <dd>{workload.waitingOnReporter}</dd>
+          </div>
+          <div>
+            <dt>At risk</dt>
+            <dd className={workload.atRisk ? "text-amber" : undefined}>{workload.atRisk}</dd>
+          </div>
+          <div>
+            <dt>Overdue</dt>
+            <dd className={workload.breached ? "text-red" : undefined}>{workload.breached}</dd>
+          </div>
+          <div>
+            <dt>Resolved this week</dt>
+            <dd>{workload.resolvedThisWeek}</dd>
+          </div>
+        </dl>
+      )}
 
-      {/* Incidents Table */}
-      <div
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "6px",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "0.875rem 1.25rem",
-            borderBottom: "1px solid var(--border-color)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            backgroundColor: "var(--bg-primary)",
-          }}
+      <section className="card" aria-label="Ticket list">
+        <SearchFilters
+          filters={filters}
+          onChange={handleFilterChange}
+          services={services}
+          technicians={admin ? technicians : undefined}
         >
-          <span
-            style={{
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-            }}
+          {filtered && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={handleResetFilters}>
+              Clear
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn"
+            style={{ marginLeft: "auto" }}
+            onClick={reloadQueue}
+            disabled={loading}
+            aria-label="Refresh"
+            title="Refresh"
           >
-            Total Results: <strong>{totalElements}</strong>
-          </span>
-          <span
-            style={{
-              fontSize: "0.8125rem",
-              color: "var(--text-muted)",
-            }}
-          >
-            Page {page + 1} of {Math.max(1, totalPages)}
-          </span>
-        </div>
+            <Icon name="refresh" size={15} />
+          </button>
+        </SearchFilters>
 
         {loading ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              color: "var(--text-muted)",
-              fontSize: "0.875rem",
-            }}
-          >
-            Loading incidents...
+          <output className="empty">Loading…</output>
+        ) : error ? (
+          <div className="empty" role="alert">
+            <h2>Couldn’t load tickets</h2>
+            <p>{error}</p>
+            <button type="button" className="btn" onClick={reloadQueue}>
+              Try again
+            </button>
           </div>
         ) : incidents.length === 0 ? (
-          <div
-            style={{
-              padding: "3rem",
-              textAlign: "center",
-              color: "var(--text-muted)",
-              fontSize: "0.875rem",
-            }}
-          >
-            No incidents match the active search criteria.
+          <div className="empty">
+            <h2>{filtered ? "No tickets match these filters" : "No tickets yet"}</h2>
+            <p>
+              {filtered
+                ? "Try a different search, or clear the filters."
+                : role === "TECHNICIAN"
+                  ? "Nothing is assigned to you right now."
+                  : role === "EMPLOYEE"
+                    ? "When you report a problem it will show up here."
+                    : "New tickets will appear here as they come in."}
+            </p>
+            {filtered ? (
+              <button type="button" className="btn" onClick={handleResetFilters}>
+                Clear filters
+              </button>
+            ) : (
+              <Link className="btn" href="/incidents/new">
+                Report an issue
+              </Link>
+            )}
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "0.875rem",
-                textAlign: "left",
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    borderBottom: "1px solid var(--border-color)",
-                    backgroundColor: "var(--bg-primary)",
-                    color: "var(--text-muted)",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  <th style={{ padding: "0.75rem 1rem" }}>Ticket</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Title</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Category</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Priority</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Status</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Assignee</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>SLA</th>
-                  <th style={{ padding: "0.75rem 1rem" }}>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {incidents.map((inc) => (
-                  <tr
-                    key={inc.id}
-                    style={{
-                      borderBottom: "1px solid var(--border-color)",
-                      cursor: "pointer",
-                      transition: "background-color 0.1s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--bg-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        fontFamily: "var(--font-mono)",
-                        fontWeight: 600,
-                        fontSize: "0.8125rem",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      <Link href={`/incidents/${inc.id}`}>{inc.incidentNumber}</Link>
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        fontWeight: 600,
-                        color: "var(--text-primary)",
-                        maxWidth: "280px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <Link href={`/incidents/${inc.id}`}>{inc.title}</Link>
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          fontWeight: 500,
-                          padding: "0.15rem 0.45rem",
-                          borderRadius: "4px",
-                          backgroundColor: "#f1f5f9",
-                          color: "#475569",
-                        }}
-                      >
-                        {inc.category}
-                      </span>
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <PriorityBadge priority={inc.priority} />
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <StatusBadge status={inc.status} />
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        fontSize: "0.8125rem",
-                        color:
-                          inc.assigneeName === "Unassigned"
-                            ? "var(--text-muted)"
-                            : "var(--text-primary)",
-                        fontStyle: inc.assigneeName === "Unassigned" ? "italic" : "normal",
-                      }}
-                    >
-                      {inc.assigneeName}
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <SlaBadge status={inc.slaStatus} />
-                    </td>
-                    <td
-                      style={{
-                        padding: "0.75rem 1rem",
-                        fontSize: "0.75rem",
-                        color: "var(--text-muted)",
-                        fontFamily: "var(--font-mono)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {new Date(inc.createdAt).toLocaleDateString()}
-                    </td>
+          <>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Title</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Priority</th>
+                    <th scope="col" className="hide-sm">
+                      Service
+                    </th>
+                    <th scope="col" className="hide-sm">
+                      Category
+                    </th>
+                    {role !== "TECHNICIAN" && (
+                      <th scope="col" className="hide-sm">
+                        Assignee
+                      </th>
+                    )}
+                    {role !== "EMPLOYEE" && (
+                      <th scope="col" className="hide-sm">
+                        Reporter
+                      </th>
+                    )}
+                    <th scope="col" className="hide-sm">
+                      SLA
+                    </th>
+                    <th scope="col" className="hide-sm">
+                      Created
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {incidents.map((ticket) => (
+                    <tr key={ticket.id}>
+                      <td className="col-id">{ticket.incidentNumber}</td>
+                      <td className="col-title row-link-cell">
+                        <Link className="title-link" href={`/incidents/${ticket.id}`}>
+                          {ticket.title}
+                        </Link>
+                      </td>
+                      <td className="col-nowrap">
+                        <StatusBadge status={ticket.status} />
+                      </td>
+                      <td className="col-nowrap">
+                        <PriorityBadge priority={ticket.priority} />
+                      </td>
+                      <td className="hide-sm">
+                        {ticket.serviceName ?? <span className="unassigned">—</span>}
+                      </td>
+                      <td className="hide-sm">{CATEGORY_LABELS[ticket.category]}</td>
+                      {role !== "TECHNICIAN" && (
+                        <td className="hide-sm col-nowrap">
+                          {ticket.assigneeName === "Unassigned" ? (
+                            <span className="unassigned">Unassigned</span>
+                          ) : (
+                            ticket.assigneeName
+                          )}
+                        </td>
+                      )}
+                      {role !== "EMPLOYEE" && (
+                        <td className="hide-sm col-nowrap">{ticket.reporterName}</td>
+                      )}
+                      <td className="hide-sm">
+                        <SlaBadge
+                          status={ticket.slaStatus}
+                          isPaused={ticket.status === "PENDING_INFO"}
+                        />
+                      </td>
+                      <td className="hide-sm col-nowrap muted">
+                        <time
+                          dateTime={ticket.createdAt}
+                          title={new Date(ticket.createdAt).toLocaleString()}
+                        >
+                          {timeAgo(ticket.createdAt)}
+                        </time>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="table-footer">
+              <span>
+                {page * PAGE_SIZE + 1}–{page * PAGE_SIZE + incidents.length} of {totalElements}
+              </span>
+              {totalPages > 1 && (
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setPage(page - 1)}
+                    disabled={page === 0}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => setPage(page + 1)}
+                    disabled={page + 1 >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         )}
-
-        {/* Pagination bar */}
-        {totalPages > 1 && (
-          <div
-            style={{
-              padding: "0.75rem 1.25rem",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              borderTop: "1px solid var(--border-color)",
-            }}
-          >
-            <button
-              type="button"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-              style={{
-                padding: "0.4rem 0.8rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-primary)",
-                fontSize: "0.8125rem",
-                cursor: page === 0 ? "not-allowed" : "pointer",
-                opacity: page === 0 ? 0.5 : 1,
-              }}
-            >
-              &larr; Previous
-            </button>
-            <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-              Page {page + 1} of {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={page + 1 >= totalPages}
-              onClick={() => setPage(page + 1)}
-              style={{
-                padding: "0.4rem 0.8rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-primary)",
-                fontSize: "0.8125rem",
-                cursor: page + 1 >= totalPages ? "not-allowed" : "pointer",
-                opacity: page + 1 >= totalPages ? 0.5 : 1,
-              }}
-            >
-              Next &rarr;
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

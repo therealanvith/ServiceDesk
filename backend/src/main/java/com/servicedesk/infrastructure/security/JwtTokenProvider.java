@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.UserId;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
 import javax.crypto.Mac;
@@ -30,6 +31,10 @@ public class JwtTokenProvider {
       @Value("${app.security.jwt-validity-seconds:86400}") long validityInSeconds,
       ObjectMapper objectMapper) {
     this.secretKeyBytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (this.secretKeyBytes.length < 32) {
+      // HS256 keys shorter than the hash output are trivially brute-forced.
+      throw new IllegalStateException("app.security.jwt-secret must be at least 32 bytes");
+    }
     this.validityInSeconds = validityInSeconds;
     this.objectMapper = objectMapper;
   }
@@ -70,7 +75,10 @@ public class JwtTokenProvider {
 
       String content = parts[0] + "." + parts[1];
       String expectedSignature = sign(content);
-      if (!expectedSignature.equals(parts[2])) {
+      // Constant-time comparison so response timing doesn't leak the signature.
+      if (!MessageDigest.isEqual(
+          expectedSignature.getBytes(StandardCharsets.US_ASCII),
+          parts[2].getBytes(StandardCharsets.US_ASCII))) {
         return false;
       }
 

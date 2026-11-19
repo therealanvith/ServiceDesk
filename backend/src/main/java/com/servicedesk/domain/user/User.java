@@ -32,7 +32,7 @@ public class User {
     this.id = Objects.requireNonNull(id, "User ID must not be null");
     this.username = Objects.requireNonNull(username, "Username must not be null");
     this.fullName = Objects.requireNonNull(fullName, "Full name must not be null");
-    this.email = Objects.requireNonNull(email, "Email must not be null");
+    this.email = email; // optional: accounts may have no email
     this.role = Objects.requireNonNull(role, "Role must not be null");
     this.skills = skills != null ? new HashSet<>(skills) : new HashSet<>();
     this.activeTicketsCount = Math.max(0, activeTicketsCount);

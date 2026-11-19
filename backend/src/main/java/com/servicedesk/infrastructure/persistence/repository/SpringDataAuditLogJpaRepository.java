@@ -11,4 +11,7 @@ public interface SpringDataAuditLogJpaRepository
     extends JpaRepository<IncidentAuditLogEntity, UUID> {
 
   List<IncidentAuditLogEntity> findByIncidentIdOrderByCreatedAtAsc(UUID incidentId);
+
+  List<IncidentAuditLogEntity> findAllByOrderByCreatedAtDesc(
+      org.springframework.data.domain.Pageable pageable);
 }

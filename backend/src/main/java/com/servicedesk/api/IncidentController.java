@@ -3,6 +3,8 @@ package com.servicedesk.api;
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
 import com.servicedesk.api.dto.AuditLogResponse;
+import com.servicedesk.api.dto.CategorySuggestionResponse;
+import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.CancelIncidentRequest;
 import com.servicedesk.api.dto.CloseIncidentRequest;
 import com.servicedesk.api.dto.CommentResponse;
@@ -24,8 +26,11 @@ import com.servicedesk.domain.sla.SlaStatus;
 import com.servicedesk.domain.user.UserId;
 import jakarta.validation.Valid;
 import java.security.Principal;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -64,6 +69,11 @@ public class IncidentController {
       @RequestParam(required = false) UUID reporterId,
       @RequestParam(required = false) SlaStatus slaStatus,
       @RequestParam(required = false) String searchText,
+      @RequestParam(required = false) UUID serviceId,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate createdFrom,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate createdTo,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
       Principal principal) {
@@ -76,11 +86,29 @@ public class IncidentController {
             assigneeId != null ? UserId.of(assigneeId) : null,
             reporterId != null ? UserId.of(reporterId) : null,
             slaStatus,
-            searchText);
+            searchText,
+            serviceId,
+            createdFrom != null ? createdFrom.atStartOfDay().toInstant(ZoneOffset.UTC) : null,
+            // "To" is inclusive of the whole day.
+            createdTo != null ? createdTo.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC) : null);
 
     PagedResponse<IncidentSummaryResponse> response =
         incidentService.listIncidents(filter, page, size, principal.getName());
     return ResponseEntity.ok(response);
+  }
+
+  /** Suggests a category while the reporter is still typing. */
+  @PostMapping("/suggest-category")
+  public ResponseEntity<CategorySuggestionResponse> suggestCategory(
+      @Valid @RequestBody IncidentDraftRequest draft) {
+    return ResponseEntity.ok(incidentService.suggestCategory(draft));
+  }
+
+  /** Open tickets that look like the one being written (possible duplicates). */
+  @PostMapping("/check-duplicates")
+  public ResponseEntity<List<SimilarIncidentResponse>> checkDuplicates(
+      @Valid @RequestBody IncidentDraftRequest draft, Principal principal) {
+    return ResponseEntity.ok(incidentService.findPossibleDuplicates(draft, principal.getName()));
   }
 
   @GetMapping("/{id}")
@@ -91,7 +119,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/assign")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> assignIncident(
       @PathVariable UUID id,
       @RequestBody(required = false) AssignIncidentRequest request,
@@ -101,7 +129,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/start")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> startWork(
       @PathVariable UUID id, Principal principal) {
     IncidentDetailResponse response = incidentService.startWork(id, principal.getName());
@@ -109,7 +137,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/request-info")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> requestInfo(
       @PathVariable UUID id,
       @Valid @RequestBody RequestInfoRequest request,
@@ -128,7 +156,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/resolve")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> resolveIncident(
       @PathVariable UUID id,
       @Valid @RequestBody ResolveIncidentRequest request,
@@ -140,7 +168,7 @@ public class IncidentController {
   @PostMapping("/{id}/close")
   public ResponseEntity<IncidentDetailResponse> closeIncident(
       @PathVariable UUID id,
-      @RequestBody(required = false) CloseIncidentRequest request,
+      @Valid @RequestBody(required = false) CloseIncidentRequest request,
       Principal principal) {
     IncidentDetailResponse response = incidentService.closeIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
@@ -156,7 +184,7 @@ public class IncidentController {
   }
 
   @PutMapping("/{id}/priority")
-  @PreAuthorize("hasRole('ADMINISTRATOR')")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> overridePriority(
       @PathVariable UUID id,
       @Valid @RequestBody OverridePriorityRequest request,
@@ -182,16 +210,19 @@ public class IncidentController {
   }
 
   @GetMapping("/{id}/audit-logs")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
-  public ResponseEntity<List<AuditLogResponse>> getAuditLogs(@PathVariable UUID id) {
-    List<AuditLogResponse> logs = incidentService.getAuditLogs(id);
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<List<AuditLogResponse>> getAuditLogs(
+      @PathVariable UUID id, Principal principal) {
+    List<AuditLogResponse> logs = incidentService.getAuditLogs(id, principal.getName());
     return ResponseEntity.ok(logs);
   }
 
   @GetMapping("/{id}/similar")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR')")
-  public ResponseEntity<List<SimilarIncidentResponse>> getSimilarIncidents(@PathVariable UUID id) {
-    List<SimilarIncidentResponse> similar = incidentService.getSimilarIncidents(id);
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<List<SimilarIncidentResponse>> getSimilarIncidents(
+      @PathVariable UUID id, Principal principal) {
+    List<SimilarIncidentResponse> similar =
+        incidentService.getSimilarIncidents(id, principal.getName());
     return ResponseEntity.ok(similar);
   }
 }

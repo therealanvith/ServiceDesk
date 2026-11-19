@@ -17,4 +17,5 @@ public record IncidentSummaryResponse(
     String reporterName,
     String assigneeName,
     SlaStatus slaStatus,
-    Instant createdAt) {}
+    Instant createdAt,
+    String serviceName) {}

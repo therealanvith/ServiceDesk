@@ -41,13 +41,24 @@ Triage, assignment, and intelligence algorithms must adapt dynamically based on 
 
 #### B. Dynamic Priority Calculation (`PriorityCalculationStrategy`)
 - **Strategy Interface**: `com.servicedesk.domain.priority.PriorityCalculationStrategy`
-- **Concrete Strategy**:
+- **Concrete Strategies**:
   - `MatrixPriorityStrategy`: Maps a $3 \times 3$ grid of `Impact` $\times$ `Urgency` to `P1_CRITICAL`, `P2_HIGH`, `P3_MEDIUM`, and `P4_LOW`.
+  - `WeightedPriorityStrategy` (active): scores $2 \times$ impact $+$ urgency $+$ the affected service's `BusinessCriticality` adjustment. With a medium-criticality service it reproduces the matrix exactly; critical services push tickets up, low-criticality ones down.
+- **Open/closed in practice**: the interface gained a three-argument `calculatePriority(impact, urgency, criticality)` as a *default method* that falls back to the two-argument version, so `MatrixPriorityStrategy` kept working unchanged when business criticality was introduced.
 
 #### C. Intelligent Duplicate & Similarity Detection (`SimilarityStrategy`)
 - **Strategy Interface**: `com.servicedesk.domain.intelligence.SimilarityStrategy`
 - **Concrete Strategy**:
-  - `JaccardSimilarityStrategy`: Tokenizes incident titles and descriptions, computes set intersection over union, and scores similarity from $0.0$ to $1.0$.
+  - `JaccardSimilarityStrategy`: Tokenizes incident titles and descriptions, computes set intersection over union, and scores similarity from $0.0$ to $1.0$. Used both for duplicate warnings while a ticket is written and for "related tickets" with known fixes.
+
+#### D. Category Suggestion (`CategorySuggestionStrategy`)
+- **Strategy Interface**: `com.servicedesk.domain.intelligence.CategorySuggestionStrategy`
+- **Concrete Strategy**:
+  - `KeywordCategoryClassifier`: scores each category by domain keywords in the text (title words count double) and returns the category, a confidence and the matched words, so the suggestion is explainable. A trained model could replace it behind the same interface.
+
+#### E. SLA Targets (`SlaPolicyProvider`)
+- **Port / Strategy**: `com.servicedesk.domain.sla.SlaPolicyProvider` supplies the `SlaPolicy` (response and resolution targets) for a priority.
+- **Implementations**: `SlaPolicyProvider.defaults()` (built-in targets, used in unit tests) and `JpaSlaPolicyProvider` (administrator-configured targets from the `sla_policies` table). `IncidentFactory` depends only on the interface.
 
 ---
 

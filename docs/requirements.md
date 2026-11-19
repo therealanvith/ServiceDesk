@@ -7,9 +7,10 @@
 ## 1. Functional Requirements (FR)
 
 ### 1.1 User Management & Authentication (FR-USER)
-- **FR-USER-01**: The system must support three distinct user roles: `EMPLOYEE`, `TECHNICIAN`, and `ADMINISTRATOR`.
-- **FR-USER-02**: The system must securely authenticate users via standard credentials and JWT (JSON Web Tokens).
-- **FR-USER-03**: Administrators must be able to list, activate, deactivate, and view technician skill profiles (e.g., `NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`).
+- **FR-USER-01**: The system must support four roles: `EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR` and a single `ROOT` superuser.
+- **FR-USER-02**: Users must be able to sign in with a username and password or with their Google account (OAuth 2.0 / OpenID Connect), and employees must be able to register themselves. Sessions use JWTs.
+- **FR-USER-03**: Administrators must be able to list users, create accounts, change roles between employee and technician, deactivate and reactivate accounts, and edit technician skills. Only root can grant or remove administrator access.
+- **FR-USER-04**: The root account is created from environment configuration on first start; there can only ever be one.
 
 ### 1.2 Incident Reporting & Management (FR-INC)
 - **FR-INC-01**: Employees must be able to report an incident with a title, description, category (`NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`), impact, and urgency.
@@ -63,8 +64,13 @@
   6. Free-text search across Title and Description.
 
 ### 1.9 Intelligent Features (FR-INTEL)
-- **FR-INTEL-01 (Duplicate / Similar Incident Detection)**: When an incident is logged, the system computes similarity scores against historical incidents using a token-based Jaccard similarity strategy (`SimilarityStrategy`). If similarity exceeds threshold ($\ge 0.6$), the system flags the incident and links relevant past resolutions.
-- **FR-INTEL-02 (Automated Category & Priority Suggestion)**: Analyzes incident text for high-impact keywords (e.g., "outage", "fire", "lab offline", "entire campus") to automatically elevate suggested impact and category.
+- **FR-INTEL-01 (Duplicate detection)**: While a ticket is being written, the system compares it with open tickets the reporter may see (token-based Jaccard similarity, `SimilarityStrategy`) and warns when similarity is $\ge 0.3$, linking the likely duplicate.
+- **FR-INTEL-02 (Suggested resolution)**: On a ticket, staff see related tickets: open look-alikes marked as possible duplicates, and resolved or closed ones with their recorded fix.
+- **FR-INTEL-03 (Category suggestion)**: The report form suggests a category from the title and description using a keyword classifier (`CategorySuggestionStrategy`), showing which words led to the suggestion.
+- **FR-INTEL-04 (Business-aware priority)**: Priority combines impact, urgency and the affected service's business criticality (section 4.1).
+- **FR-INTEL-05 (Automatic escalation)**: A ticket that gets no response by its response target is escalated to every administrator; an overdue ticket is raised one priority level.
+- **FR-INTEL-06 (SLA risk detection)**: Tickets entering the last quarter of their resolution window are flagged "at risk" and the assignee is warned.
+- **FR-INTEL-07 (Incident correlation)**: Reports highlight any service with two or more open tickets reported in the last 24 hours as a possible common cause.
 
 ---
 
@@ -80,8 +86,23 @@
 
 ## 3. Roles & Permissions Matrix
 
-| Capability / Action | Employee | Technician | Administrator |
-| :--- | :---: | :---: | :---: |
+| Capability / Action | Employee | Technician | Administrator | Root |
+| :--- | :---: | :---: | :---: | :---: |
+| Report New Incident | **Yes** | **Yes** | **Yes** | **Yes** |
+| Tickets visible in the list | Own only | Assigned to them | All | All |
+| Assign / Reassign Incident | No | No | **Yes** | **Yes** |
+| Start Work, Request Info, Resolve | No | **Yes** (assigned only) | **Yes** | **Yes** |
+| Provide Info / Resume | **Yes** (own ticket) | Own ticket | **Yes** | **Yes** |
+| Close Incident and rate the support | **Yes** (own ticket) | Own ticket | **Yes** | **Yes** |
+| Cancel Incident | **Yes** (own, if `REPORTED`) | Own, if `REPORTED` | **Yes** | **Yes** |
+| Override Priority | No | No | **Yes** | **Yes** |
+| Reports, Audit Log, SLA targets, IT services, assignment rule | No | No | **Yes** | **Yes** |
+| Manage employees and technicians | No | No | **Yes** | **Yes** |
+| Grant administrator access | No | No | No | **Yes** |
+
+Tickets outside a user's scope respond as "not found", so their existence is not revealed.
+
+--- | :---: | :---: | :---: |
 | Report New Incident | **Yes** | **Yes** | **Yes** |
 | View Own Incidents | **Yes** | **Yes** | **Yes** |
 | View All Active Incidents | No | **Yes** | **Yes** |
@@ -99,25 +120,41 @@
 
 ## 4. Business Rules & Policies
 
-### 4.1 Priority Determination Matrix
-Priority is derived from a $3 \times 3$ matrix of **Impact** (High, Medium, Low) and **Urgency** (High, Medium, Low):
+### 4.1 Priority Determination (weighted score)
+Priority combines **Impact** (how many people are affected), **Urgency** (how soon they need a fix)
+and the **business criticality** of the affected IT service:
 
-$$\text{Priority} = f(\text{Impact}, \text{Urgency})$$
+$$\text{score} = 2 \times \text{impact} + \text{urgency} + \text{criticality adjustment}$$
 
-| Impact \ Urgency | `HIGH` (Immediate) | `MEDIUM` (High) | `LOW` (Normal) |
+- Impact and urgency: `HIGH` = 3, `MEDIUM` = 2, `LOW` = 1. Impact counts double because it measures breadth.
+- Criticality adjustment: `CRITICAL` +2, `HIGH` +1, `MEDIUM` 0, `LOW` −1 (no service selected = `MEDIUM`).
+- Score ≥ 8 → **P1**, 7 → **P2**, 5–6 → **P3**, ≤ 4 → **P4**.
+
+For a medium-criticality service this reproduces the classic matrix exactly:
+
+| Impact \ Urgency | `HIGH` | `MEDIUM` | `LOW` |
 | :--- | :---: | :---: | :---: |
-| **`HIGH` (Enterprise / Multi-user / Lab Outage)** | **P1 - CRITICAL** | **P1 - CRITICAL** | **P2 - HIGH** |
-| **`MEDIUM` (Departmental / Workstation Group)** | **P2 - HIGH** | **P3 - MEDIUM** | **P3 - MEDIUM** |
-| **`LOW` (Single User / Minor Inconvenience)** | **P3 - MEDIUM** | **P4 - LOW** | **P4 - LOW** |
+| **`HIGH`** | **P1** | **P1** | **P2** |
+| **`MEDIUM`** | **P2** | **P3** | **P3** |
+| **`LOW`** | **P3** | **P4** | **P4** |
 
-### 4.2 Service Level Agreement (SLA) Matrix
+Example: "Payment application unavailable" with medium impact and urgency on the critical
+Payment Application scores 2·2 + 2 + 2 = 8 → **P1**.
 
-| Priority Level | Target First Response Time | Target Resolution Time | Warning Threshold (% of Target) | Escalation Action |
-| :--- | :---: | :---: | :---: | :--- |
-| **P1 - CRITICAL** | $\le 15\text{ minutes}$ | $\le 2\text{ hours}$ | $75\%\ (90\text{ min})$ | Notify Admin immediately; assign Senior Specialist. |
-| **P2 - HIGH** | $\le 30\text{ minutes}$ | $\le 4\text{ hours}$ | $75\%\ (180\text{ min})$ | Escalate to P1 if unassigned at $50\%$ deadline. |
-| **P3 - MEDIUM** | $\le 2\text{ hours}$ | $\le 8\text{ hours}$ | $80\%\ (384\text{ min})$ | Alert assigned technician; bump priority to P2. |
-| **P4 - LOW** | $\le 4\text{ hours}$ | $\le 24\text{ hours}$ | $85\%\ (1224\text{ min})$ | Re-queue for next available shift. |
+### 4.2 Service Level Agreement (SLA) Targets
+Defaults below; administrators can change them per priority in Settings (new tickets use the new targets).
+
+| Priority | First response | Resolution |
+| :--- | :---: | :---: |
+| **P1 - CRITICAL** | 5 minutes | 30 minutes |
+| **P2 - HIGH** | 15 minutes | 2 hours |
+| **P3 - MEDIUM** | 1 hour | 8 hours |
+| **P4 - LOW** | 4 hours | 24 hours |
+
+- **Warning**: a ticket becomes *at risk* in the last quarter of its resolution window; the assignee is notified.
+- **Breach**: once overdue, the ticket is flagged, raised one priority level (once) and the assignee is notified.
+- **Escalation**: if nobody starts work before the response target, the ticket is escalated and every administrator is notified.
+- **Pause**: the clock stops while the ticket waits on the reporter (`PENDING_INFO`); the deadline moves out by the paused time.
 
 ### 4.3 Incident Lifecycle State Transitions
 

@@ -32,7 +32,10 @@ public class EmailGatewayAdapter implements NotificationChannel {
         userJpaRepository
             .findById(message.recipientId().getValue())
             .map(UserEntity::getEmail)
-            .orElse("unknown@servicedesk.edu");
+            .orElse(null);
+    if (recipientEmail == null || recipientEmail.isBlank()) {
+      return; // no address on file, nothing to send
+    }
 
     log.info(
         "[EMAIL GATEWAY] To: {} | Subject: [{}] {} | Body: {}",

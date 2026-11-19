@@ -4,11 +4,14 @@ import com.servicedesk.domain.incident.state.ReportedState;
 import com.servicedesk.domain.priority.MatrixPriorityStrategy;
 import com.servicedesk.domain.priority.Priority;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
+import com.servicedesk.domain.service.BusinessCriticality;
+import com.servicedesk.domain.sla.SlaPolicyProvider;
 import com.servicedesk.domain.sla.SlaWindow;
 import com.servicedesk.domain.user.UserId;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
@@ -20,6 +23,7 @@ public class IncidentFactory {
   private final PriorityCalculationStrategy priorityStrategy;
   private final Clock clock;
   private final LongSupplier ticketSequence;
+  private final SlaPolicyProvider slaPolicies;
 
   public IncidentFactory() {
     this(new MatrixPriorityStrategy(), Clock.systemUTC(), 1000L);
@@ -38,6 +42,15 @@ public class IncidentFactory {
 
   public IncidentFactory(
       PriorityCalculationStrategy priorityStrategy, Clock clock, LongSupplier ticketSequence) {
+    this(priorityStrategy, clock, ticketSequence, SlaPolicyProvider.defaults());
+  }
+
+  public IncidentFactory(
+      PriorityCalculationStrategy priorityStrategy,
+      Clock clock,
+      LongSupplier ticketSequence,
+      SlaPolicyProvider slaPolicies) {
+    this.slaPolicies = slaPolicies != null ? slaPolicies : SlaPolicyProvider.defaults();
     this.priorityStrategy =
         priorityStrategy != null ? priorityStrategy : new MatrixPriorityStrategy();
     this.clock = clock != null ? clock : Clock.systemUTC();
@@ -51,6 +64,22 @@ public class IncidentFactory {
       Impact impact,
       Urgency urgency,
       UserId reporterId) {
+    return createIncident(title, description, category, impact, urgency, reporterId, null, null);
+  }
+
+  /**
+   * Creates an incident for an affected IT service; the service's business criticality is
+   * factored into the priority, and the SLA comes from the policy configured for that priority.
+   */
+  public Incident createIncident(
+      String title,
+      String description,
+      Category category,
+      Impact impact,
+      Urgency urgency,
+      UserId reporterId,
+      UUID affectedServiceId,
+      BusinessCriticality criticality) {
     Objects.requireNonNull(title, "Title must not be null");
     Objects.requireNonNull(description, "Description must not be null");
     Objects.requireNonNull(category, "Category must not be null");
@@ -60,11 +89,10 @@ public class IncidentFactory {
 
     IncidentId incidentId = IncidentId.generate();
     String incidentNumber = "INC-" + ticketSequence.getAsLong();
-    Priority priority = priorityStrategy.calculatePriority(impact, urgency);
+    Priority priority = priorityStrategy.calculatePriority(impact, urgency, criticality);
     Instant now = clock.instant();
-    SlaWindow slaWindow = SlaWindow.calculateInitial(priority, now);
-
-    return new Incident(
+    SlaWindow slaWindow = SlaWindow.calculateInitial(slaPolicies.policyFor(priority), now);
+    Incident incident = new Incident(
         incidentId,
         incidentNumber,
         title,
@@ -80,5 +108,7 @@ public class IncidentFactory {
         now,
         now,
         clock);
+    incident.setAffectedServiceId(affectedServiceId);
+    return incident;
   }
 }

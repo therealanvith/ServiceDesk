@@ -9,5 +9,6 @@ public enum AuditAction {
   ASSIGNED,
   PRIORITY_OVERRIDDEN,
   SLA_BREACHED,
+  ESCALATED,
   COMMENTED
 }

@@ -83,13 +83,13 @@ Base URL prefix: `/api/v1`
   "urgency": "HIGH",
   "reporter": {
     "id": "11111111-1111-1111-1111-111111111111",
-    "fullName": "Prof. Alan Turing",
-    "email": "aturing@campus.edu"
+    "fullName": "Employee",
+    "email": null
   },
   "assignee": {
     "id": "22222222-2222-2222-2222-222222222222",
-    "fullName": "Alice Smith (Network Specialist)",
-    "email": "alice@servicedesk.edu"
+    "fullName": "Network Technician",
+    "email": null
   },
   "slaWindow": {
     "responseDeadline": "2026-11-08T01:30:00Z",

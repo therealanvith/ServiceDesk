@@ -36,9 +36,9 @@ class AssignmentStrategyTest {
 
     techNetwork = new User(
         UserId.generate(),
-        "alice_net",
-        "Alice Smith",
-        "alice@desk.edu",
+        "tech_net",
+        "Network Technician",
+        "tech_net@example.invalid",
         Role.TECHNICIAN,
         Set.of(Category.NETWORK),
         3, // 3 active tickets
@@ -46,9 +46,9 @@ class AssignmentStrategyTest {
 
     techHardware = new User(
         UserId.generate(),
-        "bob_hw",
-        "Bob Jones",
-        "bob@desk.edu",
+        "tech_hw",
+        "Hardware Technician",
+        "tech_hw@example.invalid",
         Role.TECHNICIAN,
         Set.of(Category.HARDWARE),
         1, // 1 active ticket
@@ -56,9 +56,9 @@ class AssignmentStrategyTest {
 
     techGeneral = new User(
         UserId.generate(),
-        "charlie_gen",
-        "Charlie Brown",
-        "charlie@desk.edu",
+        "tech_lead",
+        "Lead Technician",
+        "tech_lead@example.invalid",
         Role.TECHNICIAN,
         Set.of(Category.NETWORK, Category.HARDWARE, Category.SOFTWARE, Category.ACCESS),
         5, // 5 active tickets
@@ -97,7 +97,7 @@ class AssignmentStrategyTest {
 
     Optional<User> selected = strategy.selectTechnician(incident, List.of(techNetwork, techHardware, techGeneral));
     assertTrue(selected.isPresent());
-    assertEquals(techHardware, selected.get()); // Bob has 1 active ticket vs 3 and 5
+    assertEquals(techHardware, selected.get()); // tech_hw has 1 active ticket vs 3 and 5
   }
 
   @Test
@@ -108,12 +108,12 @@ class AssignmentStrategyTest {
     // Incident requiring NETWORK skill
     Incident netIncident = factory.createIncident("Switch Port", "VLAN mismatch", Category.NETWORK, Impact.HIGH, Urgency.HIGH, UserId.generate());
 
-    // alice_net (3 tickets) and charlie_gen (5 tickets) have NETWORK skill. bob_hw does not.
+    // tech_net (3 tickets) and tech_lead (5 tickets) have NETWORK skill. tech_hw does not.
     Optional<User> netSpecialist = strategy.selectTechnician(netIncident, List.of(techNetwork, techHardware, techGeneral));
     assertTrue(netSpecialist.isPresent());
-    assertEquals(techNetwork, netSpecialist.get()); // Alice chosen over Charlie because 3 < 5
+    assertEquals(techNetwork, netSpecialist.get()); // tech_net chosen over tech_lead because 3 < 5
 
-    // Incident requiring ACCESS skill (only Charlie has it)
+    // Incident requiring ACCESS skill (only tech_lead has it)
     Incident accessIncident = factory.createIncident("Password Reset", "LDAP lock", Category.ACCESS, Impact.LOW, Urgency.LOW, UserId.generate());
     Optional<User> accessSpecialist = strategy.selectTechnician(accessIncident, List.of(techNetwork, techHardware, techGeneral));
     assertTrue(accessSpecialist.isPresent());

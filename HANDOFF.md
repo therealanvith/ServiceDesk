@@ -114,11 +114,11 @@ All accounts use the default password: **`password123`**
 
 | Username | Role | Full Name | Skills / Purpose |
 | :--- | :--- | :--- | :--- |
-| `employee1` | `EMPLOYEE` | Prof. Alan Turing | Standard reporting employee |
-| `tech_network` | `TECHNICIAN` | Alice Smith | Network Specialist |
-| `tech_hardware` | `TECHNICIAN` | Bob Jones | Hardware Specialist |
-| `tech_lead` | `TECHNICIAN` | Charlie Brown | Lead Technician (`NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`) |
-| `admin` | `ADMINISTRATOR` | System Administrator | System-wide configuration & oversight |
+| `emp` | `EMPLOYEE` | Employee | Reports and follows their own tickets |
+| `tech_net` | `TECHNICIAN` | Network Technician | `NETWORK` |
+| `tech_hw` | `TECHNICIAN` | Hardware Technician | `HARDWARE` |
+| `tech_lead` | `TECHNICIAN` | Lead Technician | `NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS` |
+| `admin` | `ADMINISTRATOR` | Administrator | Settings, assignment rules, priority overrides |
 
 ---
 

@@ -51,7 +51,7 @@ class IncidentControllerTest {
   @MockBean private DomainUserDetailsService userDetailsService;
 
   @Test
-  @WithMockUser(username = "employee1", roles = {"EMPLOYEE"})
+  @WithMockUser(username = "emp", roles = {"EMPLOYEE"})
   @DisplayName("POST /api/v1/incidents creates ticket and returns 201 Created")
   void testCreateIncident() throws Exception {
     UUID incidentId = UUID.randomUUID();
@@ -76,7 +76,7 @@ class IncidentControllerTest {
             Priority.P1_CRITICAL,
             request.impact(),
             request.urgency(),
-            new UserSummaryResponse(reporterId, "Prof. Alan Turing", "aturing@campus.edu"),
+            new UserSummaryResponse(reporterId, "Employee", null),
             null,
             new SlaWindowResponse(
                 Instant.now().plusSeconds(900),
@@ -85,9 +85,14 @@ class IncidentControllerTest {
                 0),
             null,
             Instant.now(),
-            Instant.now());
+            Instant.now(),
+            null,
+            null,
+            null,
+            null,
+            null);
 
-    when(incidentService.createIncident(any(CreateIncidentRequest.class), eq("employee1")))
+    when(incidentService.createIncident(any(CreateIncidentRequest.class), eq("emp")))
         .thenReturn(response);
 
     mockMvc
@@ -103,7 +108,7 @@ class IncidentControllerTest {
   }
 
   @Test
-  @WithMockUser(username = "employee1", roles = {"EMPLOYEE"})
+  @WithMockUser(username = "emp", roles = {"EMPLOYEE"})
   @DisplayName("POST /api/v1/incidents fails with 400 Bad Request on invalid input")
   void testCreateIncidentValidationFailure() throws Exception {
     CreateIncidentRequest invalid =
@@ -118,7 +123,7 @@ class IncidentControllerTest {
   }
 
   @Test
-  @WithMockUser(username = "employee1", roles = "EMPLOYEE")
+  @WithMockUser(username = "emp", roles = "EMPLOYEE")
   void malformedRequestsReturnBadRequest() throws Exception {
     mockMvc.perform(post("/api/v1/incidents").contentType(MediaType.APPLICATION_JSON)
         .content("{\"category\":\"INVALID\"}"))

@@ -1,13 +1,26 @@
 "use client";
 
-import { type UserProfile, api } from "@/lib/apiClient";
+import { ApiError, type AuthResult, type UserProfile, api } from "@/lib/apiClient";
+import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+
+const TOKEN_KEY = "servicedesk_jwt";
+
+/** Pages a signed-out visitor may open. */
+const PUBLIC_PATHS = ["/login", "/register"];
 
 interface AuthContextType {
   user: UserProfile | null;
   token: string | null;
   loading: boolean;
-  login: (username: string, password?: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
+  register: (data: {
+    username: string;
+    fullName: string;
+    email?: string;
+    password: string;
+  }) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -17,6 +30,8 @@ const AuthContext = createContext<AuthContextType>({
   token: null,
   loading: true,
   login: async () => {},
+  loginWithGoogle: async () => {},
+  register: async () => {},
   logout: () => {},
   refreshUser: async () => {},
 });
@@ -25,48 +40,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Every page except sign-in and sign-up needs an account.
+  useEffect(() => {
+    if (!loading && !user && !PUBLIC_PATHS.includes(pathname)) {
+      router.replace("/login");
+    }
+  }, [loading, user, pathname, router]);
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    setUser(null);
+    setToken(null);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
-      const storedToken = localStorage.getItem("servicedesk_jwt");
+      const storedToken = localStorage.getItem(TOKEN_KEY);
       if (!storedToken) {
-        setUser(null);
-        setToken(null);
-        setLoading(false);
+        clearSession();
         return;
       }
       setToken(storedToken);
-      const profile = await api.getCurrentUser();
-      setUser(profile);
-    } catch {
-      localStorage.removeItem("servicedesk_jwt");
-      setUser(null);
-      setToken(null);
+      setUser(await api.getCurrentUser());
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession();
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     refreshUser();
-  }, [refreshUser]);
+    window.addEventListener("servicedesk:session-expired", clearSession);
+    return () => window.removeEventListener("servicedesk:session-expired", clearSession);
+  }, [refreshUser, clearSession]);
 
-  const login = async (username: string, password = "password123") => {
-    setLoading(true);
-    try {
-      const res = await api.login({ username, password });
-      localStorage.setItem("servicedesk_jwt", res.token);
-      setToken(res.token);
-      setUser(res.user);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = () => {
-    localStorage.removeItem("servicedesk_jwt");
-    setToken(null);
-    setUser(null);
+  const startSession = (res: AuthResult) => {
+    localStorage.setItem(TOKEN_KEY, res.token);
+    setToken(res.token);
+    setUser(res.user);
   };
 
   return (
@@ -75,8 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         token,
         loading,
-        login,
-        logout,
+        login: async (username, password) => startSession(await api.login({ username, password })),
+        loginWithGoogle: async (credential) => startSession(await api.loginWithGoogle(credential)),
+        register: async (data) => startSession(await api.register(data)),
+        logout: clearSession,
         refreshUser,
       }}
     >

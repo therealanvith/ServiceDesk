@@ -10,6 +10,8 @@ import com.servicedesk.infrastructure.persistence.repository.SpringDataNotificat
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Adapter implementing NotificationChannel that stores notifications in the database for in-app UI delivery.
@@ -30,7 +32,9 @@ public class InAppNotificationChannelAdapter implements NotificationChannel {
     this.incidentJpaRepository = incidentJpaRepository;
   }
 
+  // Runs after the business transaction commits, so it needs a transaction of its own.
   @Override
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void send(NotificationMessage message) {
     if (message == null || message.recipientId() == null) {
       return;

@@ -3,6 +3,9 @@ package com.servicedesk.application;
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
 import com.servicedesk.api.dto.AuditLogResponse;
+import com.servicedesk.api.dto.CategorySuggestionResponse;
+import com.servicedesk.api.dto.IncidentDraftRequest;
+import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.CancelIncidentRequest;
 import com.servicedesk.api.dto.CloseIncidentRequest;
 import com.servicedesk.api.dto.CommentResponse;
@@ -28,35 +31,43 @@ import com.servicedesk.domain.event.IncidentAssignedEvent;
 import com.servicedesk.domain.event.IncidentCreatedEvent;
 import com.servicedesk.domain.event.IncidentStatusChangedEvent;
 import com.servicedesk.domain.exception.IncidentNotFoundException;
+import com.servicedesk.domain.exception.InvalidStateTransitionException;
 import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import com.servicedesk.domain.incident.Incident;
 import com.servicedesk.domain.incident.IncidentFactory;
 import com.servicedesk.domain.incident.IncidentId;
 import com.servicedesk.domain.incident.IncidentStatus;
+import com.servicedesk.domain.intelligence.CategorySuggestionStrategy;
 import com.servicedesk.domain.intelligence.JaccardSimilarityStrategy;
+import com.servicedesk.domain.intelligence.KeywordCategoryClassifier;
 import com.servicedesk.domain.intelligence.SimilarityStrategy;
 import com.servicedesk.domain.notification.NotificationChannel;
 import com.servicedesk.domain.notification.NotificationMessage;
-import com.servicedesk.domain.priority.MatrixPriorityStrategy;
+import com.servicedesk.domain.priority.WeightedPriorityStrategy;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
 import com.servicedesk.domain.repository.AuditLogRepository;
 import com.servicedesk.domain.repository.IncidentFilter;
 import com.servicedesk.domain.repository.IncidentRepository;
 import com.servicedesk.domain.repository.UserRepository;
+import com.servicedesk.domain.sla.SlaPolicyProvider;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.User;
 import com.servicedesk.domain.user.UserId;
 import com.servicedesk.infrastructure.persistence.entity.IncidentCommentEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentEntity;
+import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentCommentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataItServiceJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -77,9 +88,14 @@ public class IncidentApplicationService {
   private final IncidentFactory incidentFactory;
   private final DomainEventPublisher eventPublisher;
   private final SimilarityStrategy similarityStrategy;
+  private final CategorySuggestionStrategy categorySuggester;
+  private final SpringDataItServiceJpaRepository serviceRepository;
 
-  private AssignmentStrategy currentAssignmentStrategy;
-  private String currentAssignmentStrategyName = "SKILL_MATCH";
+  private static final int MAX_PAGE_SIZE = 100;
+
+  // Swapped at runtime from the admin screen while requests read them concurrently.
+  private volatile AssignmentStrategy currentAssignmentStrategy;
+  private volatile String currentAssignmentStrategyName = "SKILL_MATCH";
 
   public IncidentApplicationService(
       IncidentRepository incidentRepository,
@@ -89,8 +105,11 @@ public class IncidentApplicationService {
       SpringDataIncidentJpaRepository incidentJpaRepository,
       SpringDataUserJpaRepository userJpaRepository,
       List<NotificationChannel> notificationChannels,
-      Clock clock) {
+      Clock clock,
+      SlaPolicyProvider slaPolicies,
+      SpringDataItServiceJpaRepository serviceRepository) {
     this.incidentRepository = incidentRepository;
+    this.serviceRepository = serviceRepository;
     this.userRepository = userRepository;
     this.auditLogRepository = auditLogRepository;
     this.commentJpaRepository = commentJpaRepository;
@@ -98,8 +117,11 @@ public class IncidentApplicationService {
     this.userJpaRepository = userJpaRepository;
     this.notificationChannels = notificationChannels;
     this.clock = clock;
-    PriorityCalculationStrategy priorityStrategy = new MatrixPriorityStrategy();
-    this.incidentFactory = new IncidentFactory(priorityStrategy, clock, incidentJpaRepository::nextIncidentNumber);
+    PriorityCalculationStrategy priorityStrategy = new WeightedPriorityStrategy();
+    this.incidentFactory =
+        new IncidentFactory(
+            priorityStrategy, clock, incidentJpaRepository::nextIncidentNumber, slaPolicies);
+    this.categorySuggester = new KeywordCategoryClassifier();
     this.eventPublisher = new DomainEventPublisher();
     this.similarityStrategy = new JaccardSimilarityStrategy();
     this.currentAssignmentStrategy = new SkillMatchAssignmentStrategy();
@@ -111,6 +133,15 @@ public class IncidentApplicationService {
             .findByUsername(reporterUsername)
             .orElseThrow(() -> new UserNotFoundException("Reporter not found: " + reporterUsername));
 
+    ItServiceEntity service = null;
+    if (request.serviceId() != null) {
+      service =
+          serviceRepository
+              .findById(request.serviceId())
+              .filter(ItServiceEntity::isActive)
+              .orElseThrow(() -> new IllegalArgumentException("Select an active IT service"));
+    }
+
     Incident incident =
         incidentFactory.createIncident(
             request.title(),
@@ -118,7 +149,9 @@ public class IncidentApplicationService {
             request.category(),
             request.impact(),
             request.urgency(),
-            reporter.getId());
+            reporter.getId(),
+            service != null ? service.getId() : null,
+            service != null ? service.getCriticality() : null);
 
     // Persist the parent before audit entries and notifications reference it.
     incidentRepository.save(incident);
@@ -132,7 +165,12 @@ public class IncidentApplicationService {
             null,
             incident.getStatus().name(),
             clock.instant(),
-            "Incident ticket created"));
+            "Created as " + incident.getCategory()
+                + (service != null ? " on " + service.getName() : "")
+                + "; priority " + incident.getPriority()
+                + " from impact " + incident.getImpact()
+                + ", urgency " + incident.getUrgency()
+                + (service != null ? ", service criticality " + service.getCriticality() : "")));
 
     // Attempt automatic assignment using current strategy
     List<User> technicians = userRepository.findTechnicians();
@@ -183,8 +221,9 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse assignIncident(
       UUID incidentId, AssignIncidentRequest request, String actorUsername) {
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    requireAdmin(actor, "assign incidents");
+    Incident incident = loadVisibleIncident(incidentId, actor);
 
     UserId targetTechId;
     String targetTechName;
@@ -193,6 +232,9 @@ public class IncidentApplicationService {
           userRepository
               .findById(UserId.of(request.technicianId()))
               .orElseThrow(() -> new UserNotFoundException("Technician not found: " + request.technicianId()));
+      if (tech.getRole() != Role.TECHNICIAN || !tech.isAvailable()) {
+        throw new IllegalArgumentException("Select an active technician for assignment");
+      }
       targetTechId = tech.getId();
       targetTechName = tech.getUsername();
     } else {
@@ -200,7 +242,8 @@ public class IncidentApplicationService {
       User selected =
           currentAssignmentStrategy
               .selectTechnician(incident, technicians)
-              .orElseThrow(() -> new IllegalStateException("No available technician for assignment"));
+              .orElseThrow(
+                  () -> new InvalidStateTransitionException("No available technician for assignment"));
       targetTechId = selected.getId();
       targetTechName = selected.getUsername();
     }
@@ -233,11 +276,14 @@ public class IncidentApplicationService {
   }
 
   public IncidentDetailResponse startWork(UUID incidentId, String actorUsername) {
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+
+    requireAssigneeOrAdmin(incident, actor, "start work on this incident");
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.startWork(actor.getId());
+    incident.markResponded(clock.instant());
     Incident saved = incidentRepository.save(incident);
 
     recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Work started by technician");
@@ -246,8 +292,10 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse requestInfo(
       UUID incidentId, RequestInfoRequest request, String actorUsername) {
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+
+    requireAssigneeOrAdmin(incident, actor, "request information on this incident");
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.requestInfo(request.question(), actor.getId());
@@ -269,9 +317,9 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse provideInfo(
       UUID incidentId, ProvideInfoRequest request, String actorUsername) {
-    getIncidentDetail(incidentId, actorUsername);
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+    requireReporterOrAdmin(incident, actor, "answer questions on this incident");
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.provideInfo(request.answer(), actor.getId());
@@ -295,8 +343,10 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse resolveIncident(
       UUID incidentId, ResolveIncidentRequest request, String actorUsername) {
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+
+    requireAssigneeOrAdmin(incident, actor, "resolve this incident");
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.resolve(request.resolutionSummary(), actor.getId());
@@ -322,24 +372,50 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse closeIncident(
       UUID incidentId, CloseIncidentRequest request, String actorUsername) {
-    getIncidentDetail(incidentId, actorUsername);
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+    requireReporterOrAdmin(incident, actor, "confirm and close this incident");
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.close(actor.getId());
+    if (request != null && request.rating() != null) {
+      if (!actor.getId().equals(incident.getReporterId())) {
+        throw new UnauthorizedOperationException("Only the person who reported it can rate the support");
+      }
+      incident.recordFeedback(request.rating(), request.remarks());
+    }
     Incident saved = incidentRepository.save(incident);
 
     String remarks = request != null && request.remarks() != null ? request.remarks() : "Confirmed closure";
+    if (request != null && request.rating() != null) {
+      remarks = remarks + " (rated " + request.rating() + "/5)";
+    }
     recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), remarks);
+
+    if (incident.getAssigneeId() != null) {
+      notifyChannels(
+          NotificationMessage.of(
+              incident.getAssigneeId(),
+              incident.getId(),
+              "CLOSED",
+              "Incident Closed: " + incident.getIncidentNumber(),
+              "The reporter confirmed the fix"
+                  + (request != null && request.rating() != null
+                      ? " and rated it " + request.rating() + "/5."
+                      : ".")));
+    }
     return toDetailResponse(saved);
   }
 
   public IncidentDetailResponse cancelIncident(
       UUID incidentId, CancelIncidentRequest request, String actorUsername) {
-    getIncidentDetail(incidentId, actorUsername);
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+    requireReporterOrAdmin(incident, actor, "cancel this incident");
+    if (!actor.getRole().hasAdminRights() && incident.getStatus() != IncidentStatus.REPORTED) {
+      throw new UnauthorizedOperationException(
+          "Only an administrator can cancel an incident after it has been assigned");
+    }
 
     IncidentStatus oldStatus = incident.getStatus();
     incident.cancel(request.reason(), actor.getId());
@@ -351,8 +427,9 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse overridePriority(
       UUID incidentId, OverridePriorityRequest request, String actorUsername) {
-    Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
+    requireAdmin(actor, "override priority");
+    Incident incident = loadVisibleIncident(incidentId, actor);
 
     String oldPriority = incident.getPriority().name();
     incident.overridePriority(request.priority(), request.remarks(), actor.getId());
@@ -368,19 +445,27 @@ public class IncidentApplicationService {
             clock.instant(),
             request.remarks()));
 
+    for (UserId recipient : java.util.stream.Stream.of(incident.getReporterId(), incident.getAssigneeId())
+        .filter(java.util.Objects::nonNull)
+        .distinct()
+        .toList()) {
+      notifyChannels(
+          NotificationMessage.of(
+              recipient,
+              incident.getId(),
+              "PRIORITY_CHANGED",
+              "Priority Changed: " + incident.getIncidentNumber(),
+              "Priority changed from " + oldPriority + " to " + request.priority() + ": "
+                  + request.remarks()));
+    }
+
     return toDetailResponse(saved);
   }
 
   @Transactional(readOnly = true)
   public IncidentDetailResponse getIncidentDetail(UUID incidentId, String requesterUsername) {
-    Incident incident = loadIncident(incidentId);
     User requester = loadUser(requesterUsername);
-
-    if (requester.getRole() == Role.EMPLOYEE && !incident.getReporterId().equals(requester.getId())) {
-      throw new UnauthorizedOperationException("Employees can only view their own incidents");
-    }
-
-    return toDetailResponse(incident);
+    return toDetailResponse(loadVisibleIncident(incidentId, requester));
   }
 
   @Transactional(readOnly = true)
@@ -388,26 +473,32 @@ public class IncidentApplicationService {
       IncidentFilter filter, int page, int size, String requesterUsername) {
     User requester = loadUser(requesterUsername);
 
-    IncidentFilter effectiveFilter = filter;
-    if (requester.getRole() == Role.EMPLOYEE) {
-      effectiveFilter =
-          new IncidentFilter(
-              filter != null ? filter.status() : null,
-              filter != null ? filter.priority() : null,
-              filter != null ? filter.category() : null,
-              null,
-              requester.getId(), // restrict to own incidents
-              filter != null ? filter.slaStatus() : null,
-              filter != null ? filter.searchText() : null);
-    }
+    IncidentFilter effectiveFilter = scopeToRole(filter, requester);
 
     List<Incident> allMatching = incidentRepository.findWithFilters(effectiveFilter);
-    List<IncidentSummaryResponse> summaryList = allMatching.stream().map(this::toSummaryResponse).toList();
+    PagedResponse<Incident> pageOfIncidents =
+        PagedResponse.of(allMatching, page, Math.min(Math.max(size, 1), MAX_PAGE_SIZE));
 
-    return PagedResponse.of(summaryList, page, size);
+    // Map only the requested page, resolving each user's name once.
+    Map<UserId, String> names = new HashMap<>();
+    Map<UUID, String> serviceNames = new HashMap<>();
+    serviceRepository.findAll().forEach(s -> serviceNames.put(s.getId(), s.getName()));
+    List<IncidentSummaryResponse> content =
+        pageOfIncidents.content().stream()
+            .map(inc -> toSummaryResponse(inc, names, serviceNames))
+            .toList();
+
+    return new PagedResponse<>(
+        content,
+        pageOfIncidents.page(),
+        pageOfIncidents.size(),
+        pageOfIncidents.totalElements(),
+        pageOfIncidents.totalPages());
   }
 
   public CommentResponse addComment(UUID incidentId, AddCommentRequest request, String authorUsername) {
+    loadVisibleIncident(incidentId, loadUser(authorUsername));
+
     IncidentEntity incident =
         incidentJpaRepository
             .findById(incidentId)
@@ -459,8 +550,8 @@ public class IncidentApplicationService {
 
   @Transactional(readOnly = true)
   public List<CommentResponse> getComments(UUID incidentId, String requesterUsername) {
-    getIncidentDetail(incidentId, requesterUsername);
     User requester = loadUser(requesterUsername);
+    loadVisibleIncident(incidentId, requester);
     boolean isEmployee = requester.getRole() == Role.EMPLOYEE;
 
     List<IncidentCommentEntity> entities =
@@ -483,59 +574,116 @@ public class IncidentApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<AuditLogResponse> getAuditLogs(UUID incidentId) {
+  public List<AuditLogResponse> getAuditLogs(UUID incidentId, String requesterUsername) {
+    Incident incident = loadVisibleIncident(incidentId, loadUser(requesterUsername));
+    Map<UserId, String> names = new HashMap<>();
+    Map<IncidentId, String> numbers = new HashMap<>(Map.of(incident.getId(), incident.getIncidentNumber()));
     return auditLogRepository.findByIncidentId(IncidentId.of(incidentId)).stream()
-        .map(
-            log -> {
-              String actorName = "System";
-              if (log.actorId() != null) {
-                actorName =
-                    userRepository
-                        .findById(log.actorId())
-                        .map(User::getFullName)
-                        .orElse("User (" + log.actorId() + ")");
-              }
-              return new AuditLogResponse(
-                  log.id(),
-                  log.incidentId().getValue(),
-                  log.actorId() != null ? log.actorId().getValue() : null,
-                  actorName,
-                  log.action(),
-                  log.oldValue(),
-                  log.newValue(),
-                  log.remarks(),
-                  log.timestamp());
-            })
+        .map(log -> toAuditResponse(log, names, numbers))
         .toList();
   }
 
+  /** Organisation-wide activity, newest first; administrators only. */
   @Transactional(readOnly = true)
-  public List<SimilarIncidentResponse> getSimilarIncidents(UUID incidentId) {
-    Incident target = loadIncident(incidentId);
-    String targetText = target.getTitle() + " " + target.getDescription();
+  public List<AuditLogResponse> getRecentAuditLogs(int limit, String requesterUsername) {
+    requireAdmin(loadUser(requesterUsername), "view the audit trail");
+    Map<UserId, String> names = new HashMap<>();
+    Map<IncidentId, String> numbers = new HashMap<>();
+    return auditLogRepository.findRecent(Math.min(Math.max(limit, 1), 500)).stream()
+        .map(log -> toAuditResponse(log, names, numbers))
+        .toList();
+  }
 
-    List<Incident> resolvedCandidates =
+  private AuditLogResponse toAuditResponse(
+      AuditLog log, Map<UserId, String> names, Map<IncidentId, String> numbers) {
+    String actorName =
+        log.actorId() == null ? "System" : userName(log.actorId(), names, "Former user");
+    String number =
+        numbers.computeIfAbsent(
+            log.incidentId(),
+            id -> incidentRepository.findById(id).map(Incident::getIncidentNumber).orElse(null));
+    return new AuditLogResponse(
+        log.id(),
+        log.incidentId().getValue(),
+        log.actorId() != null ? log.actorId().getValue() : null,
+        actorName,
+        log.action(),
+        log.oldValue(),
+        log.newValue(),
+        log.remarks(),
+        log.timestamp(),
+        number);
+  }
+
+  /** Keyword-based category suggestion for a ticket that is still being written. */
+  public CategorySuggestionResponse suggestCategory(IncidentDraftRequest draft) {
+    return categorySuggester
+        .suggest(draft.title(), draft.description())
+        .map(s -> new CategorySuggestionResponse(s.category(), s.confidence(), s.matchedKeywords()))
+        .orElse(new CategorySuggestionResponse(null, 0, List.of()));
+  }
+
+  /**
+   * Open tickets that look like the one being written, limited to tickets the requester can see:
+   * employees are warned about their own earlier reports, staff about anything in their scope.
+   */
+  @Transactional(readOnly = true)
+  public List<SimilarIncidentResponse> findPossibleDuplicates(
+      IncidentDraftRequest draft, String requesterUsername) {
+    User requester = loadUser(requesterUsername);
+    String text = (draft.title() == null ? "" : draft.title()) + " "
+        + (draft.description() == null ? "" : draft.description());
+    if (text.isBlank()) {
+      return List.of();
+    }
+    return rankSimilar(
+        text,
         incidentRepository.findAll().stream()
-            .filter(inc -> !inc.getId().equals(target.getId()))
-            .filter(inc -> inc.getStatus() == IncidentStatus.RESOLVED || inc.getStatus() == IncidentStatus.CLOSED)
-            .toList();
+            .filter(inc -> isOpen(inc.getStatus()))
+            .filter(inc -> canView(inc, requester))
+            .toList());
+  }
 
-    return resolvedCandidates.stream()
+  private static boolean isOpen(IncidentStatus status) {
+    return status.isActive() && status != IncidentStatus.RESOLVED;
+  }
+
+  private List<SimilarIncidentResponse> rankSimilar(String text, List<Incident> candidates) {
+    return candidates.stream()
         .map(
             cand -> {
-              String candText = cand.getTitle() + " " + cand.getDescription();
-              double score = similarityStrategy.calculateSimilarity(targetText, candText);
+              double score =
+                  similarityStrategy.calculateSimilarity(
+                      text, cand.getTitle() + " " + cand.getDescription());
               return new SimilarIncidentResponse(
                   cand.getIncidentNumber(),
                   cand.getTitle(),
                   Math.round(score * 100.0) / 100.0,
                   cand.getStatus().name(),
-                  cand.getResolutionSummary());
+                  cand.getResolutionSummary(),
+                  cand.getId().getValue(),
+                  isOpen(cand.getStatus()));
             })
-        .filter(res -> res.similarityScore() >= 0.3) // 0.3 threshold for meaningful keyword suggestions
+        .filter(res -> res.similarityScore() >= 0.3)
         .sorted(Comparator.comparingDouble(SimilarIncidentResponse::similarityScore).reversed())
         .limit(5)
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public List<SimilarIncidentResponse> getSimilarIncidents(UUID incidentId, String requesterUsername) {
+    User requester = loadUser(requesterUsername);
+    Incident target = loadVisibleIncident(incidentId, requester);
+    String targetText = target.getTitle() + " " + target.getDescription();
+
+    // Open look-alikes are likely duplicates; resolved/closed ones may already hold the fix.
+    return rankSimilar(
+        targetText,
+        incidentRepository.findAll().stream()
+            .filter(inc -> !inc.getId().equals(target.getId()))
+            .filter(inc -> inc.getStatus() != IncidentStatus.CANCELLED)
+            .filter(inc -> canView(inc, requester))
+            .toList());
   }
 
   public String getActiveAssignmentStrategyName() {
@@ -577,14 +725,64 @@ public class IncidentApplicationService {
   }
 
   private void notifyChannels(NotificationMessage message) {
-    if (notificationChannels != null) {
-      for (NotificationChannel channel : notificationChannels) {
-        try {
-          channel.send(message);
-        } catch (Exception ignored) {
-        }
-      }
+    NotificationDispatch.afterCommit(notificationChannels, message);
+  }
+
+  /**
+   * Ticket visibility: admins and root see everything, technicians see tickets assigned to them,
+   * and everyone sees the tickets they reported.
+   */
+  private boolean canView(Incident incident, User user) {
+    if (user.getRole().hasAdminRights() || user.getId().equals(incident.getReporterId())) {
+      return true;
     }
+    return user.getRole() == Role.TECHNICIAN && user.getId().equals(incident.getAssigneeId());
+  }
+
+  /** Tickets outside the user's scope are reported as missing so their existence isn't leaked. */
+  private Incident loadVisibleIncident(UUID incidentId, User user) {
+    Incident incident = loadIncident(incidentId);
+    if (!canView(incident, user)) {
+      throw new IncidentNotFoundException("Incident not found: " + incidentId);
+    }
+    return incident;
+  }
+
+  private IncidentFilter scopeToRole(IncidentFilter filter, User requester) {
+    IncidentFilter base =
+        filter != null ? filter : new IncidentFilter(null, null, null, null, null, null, null);
+    return switch (requester.getRole()) {
+      case ADMINISTRATOR, ROOT -> base;
+      case TECHNICIAN -> base.withAssignee(requester.getId());
+      case EMPLOYEE -> base.withReporter(requester.getId());
+    };
+  }
+
+  private void requireAdmin(User actor, String action) {
+    if (!actor.getRole().hasAdminRights()) {
+      throw new UnauthorizedOperationException("Only an administrator can " + action);
+    }
+  }
+
+  private void requireAssigneeOrAdmin(Incident incident, User actor, String action) {
+    boolean isAssignee =
+        actor.getRole() == Role.TECHNICIAN && actor.getId().equals(incident.getAssigneeId());
+    if (!actor.getRole().hasAdminRights() && !isAssignee) {
+      throw new UnauthorizedOperationException(
+          "Only the assigned technician or an administrator can " + action);
+    }
+  }
+
+  private void requireReporterOrAdmin(Incident incident, User actor, String action) {
+    if (!actor.getRole().hasAdminRights() && !actor.getId().equals(incident.getReporterId())) {
+      throw new UnauthorizedOperationException(
+          "Only the person who reported it or an administrator can " + action);
+    }
+  }
+
+  private String userName(UserId id, Map<UserId, String> cache, String fallback) {
+    return cache.computeIfAbsent(
+        id, key -> userRepository.findById(key).map(User::getFullName).orElse(fallback));
   }
 
   private Incident loadIncident(UUID incidentId) {
@@ -639,24 +837,27 @@ public class IncidentApplicationService {
         slaDto,
         incident.getResolutionSummary(),
         incident.getCreatedAt(),
-        incident.getUpdatedAt());
+        incident.getUpdatedAt(),
+        incident.getAffectedServiceId() == null
+            ? null
+            : serviceRepository.findById(incident.getAffectedServiceId()).map(this::toServiceResponse).orElse(null),
+        incident.getRespondedAt(),
+        incident.getEscalatedAt(),
+        incident.getFeedbackRating(),
+        incident.getFeedbackComment());
   }
 
-  private IncidentSummaryResponse toSummaryResponse(Incident incident) {
-    String reporterName =
-        userRepository
-            .findById(incident.getReporterId())
-            .map(User::getFullName)
-            .orElse("Unknown");
+  private ServiceResponse toServiceResponse(ItServiceEntity s) {
+    return new ServiceResponse(s.getId(), s.getName(), s.getDescription(), s.getCriticality(), s.isActive());
+  }
 
-    String assigneeName = "Unassigned";
-    if (incident.getAssigneeId() != null) {
-      assigneeName =
-          userRepository
-              .findById(incident.getAssigneeId())
-              .map(User::getFullName)
-              .orElse("Unassigned");
-    }
+  private IncidentSummaryResponse toSummaryResponse(
+      Incident incident, Map<UserId, String> names, Map<UUID, String> serviceNames) {
+    String reporterName = userName(incident.getReporterId(), names, "Unknown");
+    String assigneeName =
+        incident.getAssigneeId() != null
+            ? userName(incident.getAssigneeId(), names, "Unassigned")
+            : "Unassigned";
 
     return new IncidentSummaryResponse(
         incident.getId().getValue(),
@@ -668,6 +869,7 @@ public class IncidentApplicationService {
         reporterName,
         assigneeName,
         incident.getSlaWindow() != null ? incident.getSlaWindow().getStatus() : null,
-        incident.getCreatedAt());
+        incident.getCreatedAt(),
+        incident.getAffectedServiceId() != null ? serviceNames.get(incident.getAffectedServiceId()) : null);
   }
 }

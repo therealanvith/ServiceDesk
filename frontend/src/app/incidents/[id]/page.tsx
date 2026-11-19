@@ -9,15 +9,17 @@ import { StateActions } from "@/components/StateActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/context/AuthContext";
 import { type AuditLogItem, type CommentItem, type IncidentDetail, api } from "@/lib/apiClient";
+import { CATEGORY_LABELS, CRITICALITY_LABELS, formatDateTime, timeAgo } from "@/lib/labels";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function IncidentDetailPage() {
   const params = useParams();
   const incidentId = params?.id as string;
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const requestVersion = useRef(0);
 
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -26,72 +28,63 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    const version = ++requestVersion.current;
+    setIncident(null);
+    setComments([]);
+    setAuditLogs([]);
     if (!incidentId || !user) return;
     setLoading(true);
     setError(null);
     try {
       const inc = await api.getIncident(incidentId);
+      if (version !== requestVersion.current) return;
       setIncident(inc);
 
-      // Load comments & audit logs in parallel
       const [cRes, aRes] = await Promise.allSettled([
         api.getComments(incidentId),
         user.role === "EMPLOYEE" ? Promise.resolve([]) : api.getAuditLogs(incidentId),
       ]);
 
+      if (version !== requestVersion.current) return;
       if (cRes.status === "fulfilled") setComments(cRes.value);
       if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
     } catch (err: unknown) {
+      if (version !== requestVersion.current) return;
       setError(err instanceof Error ? err.message : "Failed to load incident");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   }, [incidentId, user]);
 
   useEffect(() => {
     loadData();
+    return () => {
+      requestVersion.current++;
+    };
   }, [loadData]);
 
-  if (loading) {
+  if (!authLoading && !user) {
     return (
-      <div
-        style={{
-          padding: "3rem",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "0.875rem",
-        }}
-      >
-        Loading ticket details...
+      <div className="card empty">
+        <h2>Sign in to view this ticket</h2>
+        <Link className="btn btn-primary" href="/login">
+          Sign in
+        </Link>
       </div>
     );
   }
 
+  if (loading) {
+    return <output className="empty">Loading ticket…</output>;
+  }
+
   if (error || !incident) {
     return (
-      <div style={{ maxWidth: "600px", margin: "2rem auto", textAlign: "center" }}>
-        <div
-          style={{
-            backgroundColor: "#fef2f2",
-            color: "#b91c1c",
-            padding: "1rem",
-            borderRadius: "6px",
-            border: "1px solid #fecaca",
-            marginBottom: "1rem",
-            fontSize: "0.875rem",
-          }}
-        >
-          {error ?? "Incident not found"}
-        </div>
-        <Link
-          href="/"
-          style={{
-            color: "var(--accent)",
-            fontWeight: 600,
-            fontSize: "0.875rem",
-          }}
-        >
-          &larr; Return to Incidents Dashboard
+      <div className="card empty" role="alert">
+        <h2>Couldn’t open this ticket</h2>
+        <p>{error ?? "It may have been removed, or you don’t have access."}</p>
+        <Link className="btn" href="/">
+          Back to incidents
         </Link>
       </div>
     );
@@ -100,227 +93,151 @@ export default function IncidentDetailPage() {
   const isReporter = Boolean(user && incident.reporter.id === user.id);
   const currentUserRole = user?.role ?? "EMPLOYEE";
   const isPaused = incident.status === "PENDING_INFO";
+  const sla = incident.slaWindow;
 
   return (
-    <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-      {/* Top back link */}
-      <div style={{ marginBottom: "1rem" }}>
-        <Link
-          href="/"
-          style={{
-            fontSize: "0.8125rem",
-            color: "var(--accent)",
-            fontWeight: 500,
-          }}
-        >
-          &larr; Back to Incidents
-        </Link>
-      </div>
+    <>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link href="/">Incidents</Link>
+        <span aria-hidden="true">/</span>
+        <span className="mono">{incident.incidentNumber}</span>
+      </nav>
+      <h1 className="detail-title">{incident.title}</h1>
+      <p className="detail-sub">
+        Opened by {incident.reporter.fullName}{" "}
+        <time dateTime={incident.createdAt} title={new Date(incident.createdAt).toLocaleString()}>
+          {timeAgo(incident.createdAt)}
+        </time>
+      </p>
 
-      {/* Ticket Header Card */}
-      <div
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "6px",
-          padding: "1.5rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: "0.75rem",
-            marginBottom: "0.75rem",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                marginBottom: "0.25rem",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 700,
-                  fontSize: "0.875rem",
-                  color: "var(--accent)",
-                }}
-              >
-                {incident.incidentNumber}
-              </span>
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  padding: "0.15rem 0.45rem",
-                  borderRadius: "4px",
-                  backgroundColor: "#f1f5f9",
-                  color: "#475569",
-                  fontWeight: 500,
-                }}
-              >
-                {incident.category}
-              </span>
-            </div>
-            <h1
-              style={{
-                fontSize: "1.375rem",
-                fontWeight: 700,
-                color: "var(--text-primary)",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {incident.title}
-            </h1>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <PriorityBadge priority={incident.priority} />
-            <StatusBadge status={incident.status} />
-            <SlaBadge status={incident.slaWindow?.slaStatus ?? null} isPaused={isPaused} />
-          </div>
-        </div>
-
-        <p
-          style={{
-            fontSize: "0.9375rem",
-            color: "var(--text-secondary)",
-            lineHeight: 1.6,
-            marginBottom: "1.25rem",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {incident.description}
-        </p>
-
-        {/* Resolution Notes Banner */}
-        {incident.resolutionNotes && (
-          <div
-            style={{
-              backgroundColor: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: "4px",
-              padding: "0.875rem",
-              marginBottom: "1.25rem",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "0.8125rem",
-                fontWeight: 700,
-                color: "#166534",
-                marginBottom: "0.25rem",
-              }}
-            >
-              Resolution Summary
-            </div>
-            <p style={{ fontSize: "0.875rem", color: "#14532d" }}>{incident.resolutionNotes}</p>
-          </div>
-        )}
-
-        {/* Metadata Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "1rem",
-            fontSize: "0.8125rem",
-            borderTop: "1px solid var(--border-color)",
-            paddingTop: "1rem",
-          }}
-        >
-          <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>Reporter</span>
-            <strong style={{ color: "var(--text-primary)" }}>{incident.reporter.fullName}</strong>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-              {incident.reporter.email}
-            </div>
-          </div>
-
-          <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>
-              Assigned Specialist
-            </span>
-            {incident.assignee ? (
-              <>
-                <strong style={{ color: "var(--text-primary)" }}>
-                  {incident.assignee.fullName}
-                </strong>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  {incident.assignee.email}
-                </div>
-              </>
-            ) : (
-              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Unassigned</span>
-            )}
-          </div>
-
-          <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>
-              SLA Target Resolution
-            </span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-primary)",
-                fontWeight: 600,
-              }}
-            >
-              {incident.slaWindow?.resolutionDeadline
-                ? new Date(incident.slaWindow.resolutionDeadline).toLocaleTimeString()
-                : "N/A"}
-            </span>
-            {incident.slaWindow && incident.slaWindow.pausedSeconds > 0 && (
-              <div style={{ fontSize: "0.75rem", color: "#7c3aed" }}>
-                Paused {Math.round(incident.slaWindow.pausedSeconds / 60)}m in PENDING_INFO
+      <div className="detail">
+        <div className="stack">
+          <section className="card card-body stack" aria-label="Description">
+            <p className="description">{incident.description}</p>
+            {incident.resolutionNotes && (
+              <div className="callout">
+                <p className="callout-title">Resolution</p>
+                <p className="description">{incident.resolutionNotes}</p>
               </div>
             )}
-          </div>
+            {incident.feedbackRating != null && (
+              <div className="callout callout-neutral">
+                <p className="callout-title">Reporter feedback: {incident.feedbackRating}/5</p>
+                {incident.feedbackComment && (
+                  <p className="description">{incident.feedbackComment}</p>
+                )}
+              </div>
+            )}
+          </section>
 
-          <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>Reported At</span>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-secondary)",
-              }}
-            >
-              {new Date(incident.createdAt).toLocaleString()}
-            </span>
-          </div>
+          {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
+
+          <CommentThread
+            incidentId={incident.id}
+            initialComments={comments}
+            currentUserRole={currentUserRole}
+          />
+
+          {currentUserRole !== "EMPLOYEE" && <AuditTimeline logs={auditLogs} />}
         </div>
+
+        <aside className="aside" aria-label="Ticket details">
+          <section className="card card-body">
+            <dl className="props">
+              <dt>Status</dt>
+              <dd>
+                <StatusBadge status={incident.status} />
+              </dd>
+              <dt>Priority</dt>
+              <dd>
+                <PriorityBadge priority={incident.priority} />
+              </dd>
+              <dt>SLA</dt>
+              <dd>
+                <SlaBadge status={sla?.slaStatus ?? null} isPaused={isPaused} />
+                {sla && sla.pausedSeconds > 0 && (
+                  <span className="props-sub">
+                    Paused {Math.round(sla.pausedSeconds / 60)} min so far
+                  </span>
+                )}
+              </dd>
+              <dt>Due</dt>
+              <dd>
+                {sla?.resolutionDeadline ? (
+                  formatDateTime(sla.resolutionDeadline)
+                ) : (
+                  <span className="muted">—</span>
+                )}
+              </dd>
+              <dt>Response</dt>
+              <dd>
+                {incident.respondedAt ? (
+                  <>
+                    {formatDateTime(incident.respondedAt)}
+                    {sla && (
+                      <span className="props-sub">
+                        {new Date(incident.respondedAt) <= new Date(sla.responseDeadline)
+                          ? "Within target"
+                          : "Later than target"}
+                      </span>
+                    )}
+                  </>
+                ) : sla ? (
+                  <>
+                    <span className="muted">Waiting</span>
+                    <span className="props-sub">Due {formatDateTime(sla.responseDeadline)}</span>
+                  </>
+                ) : (
+                  <span className="muted">—</span>
+                )}
+                {incident.escalatedAt && (
+                  <span className="props-sub text-red">
+                    Escalated {formatDateTime(incident.escalatedAt)}
+                  </span>
+                )}
+              </dd>
+              <dt>Service</dt>
+              <dd>
+                {incident.service ? (
+                  <>
+                    {incident.service.name}
+                    <span className="props-sub">
+                      {CRITICALITY_LABELS[incident.service.criticality]} criticality
+                    </span>
+                  </>
+                ) : (
+                  <span className="muted">Not specified</span>
+                )}
+              </dd>
+              <dt>Category</dt>
+              <dd>{CATEGORY_LABELS[incident.category] ?? incident.category}</dd>
+              <dt>Assignee</dt>
+              <dd>
+                {incident.assignee ? (
+                  incident.assignee.fullName
+                ) : (
+                  <span className="unassigned">Unassigned</span>
+                )}
+              </dd>
+              <dt>Reporter</dt>
+              <dd>{incident.reporter.fullName}</dd>
+              <dt>Created</dt>
+              <dd>{formatDateTime(incident.createdAt)}</dd>
+            </dl>
+          </section>
+
+          <StateActions
+            incident={incident}
+            currentUserRole={currentUserRole}
+            isReporter={isReporter}
+            isAssignee={Boolean(user && incident.assignee?.id === user.id)}
+            onUpdate={(updated) => {
+              setIncident(updated);
+              loadData();
+            }}
+          />
+        </aside>
       </div>
-
-      {/* State Actions: Lifecycle State Machine Transitions */}
-      <StateActions
-        incident={incident}
-        currentUserRole={currentUserRole}
-        isReporter={isReporter}
-        onUpdate={(updated) => {
-          setIncident(updated);
-          loadData();
-        }}
-      />
-
-      {/* Intelligent Duplicate & Similar Incident Detection */}
-      {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
-
-      {/* Diagnostic Discussion Thread */}
-      <CommentThread
-        incidentId={incident.id}
-        initialComments={comments}
-        currentUserRole={currentUserRole}
-      />
-
-      {/* Immutable Audit Ledger Timeline */}
-      {currentUserRole !== "EMPLOYEE" && <AuditTimeline logs={auditLogs} />}
-    </div>
+    </>
   );
 }

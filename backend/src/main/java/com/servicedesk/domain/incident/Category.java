@@ -7,5 +7,11 @@ public enum Category {
   NETWORK,
   HARDWARE,
   SOFTWARE,
-  ACCESS
+  /** Authentication, accounts and permissions. */
+  ACCESS,
+  DATABASE,
+  CLOUD,
+  SECURITY,
+  APPLICATION,
+  STORAGE
 }

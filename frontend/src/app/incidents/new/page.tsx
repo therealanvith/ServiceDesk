@@ -1,66 +1,84 @@
 "use client";
 
-import { PriorityMatrixPreview, calculateMatrixPriority } from "@/components/PriorityMatrixPreview";
+import { PriorityMatrixPreview } from "@/components/PriorityMatrixPreview";
 import { useAuth } from "@/context/AuthContext";
-import { type Category, type Impact, type Urgency, api } from "@/lib/apiClient";
+import {
+  type Category,
+  type CategorySuggestion,
+  type Impact,
+  type ItService,
+  type SimilarIncident,
+  type Urgency,
+  api,
+} from "@/lib/apiClient";
+import { CATEGORY_LABELS, CRITICALITY_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const DEMO_PRESETS = [
-  {
-    name: "Lab 304 Switch Outage (Demo Scenario 1 & 3)",
-    title: "Lab 304 workstations cannot reach local gateway",
-    description:
-      "All desktops in Computer Lab 304 show IP autoconfiguration 169.254.x.x and cannot reach the default gateway after power maintenance. Switch port trunking appears inactive.",
-    category: "NETWORK" as Category,
-    impact: "HIGH" as Impact,
-    urgency: "HIGH" as Urgency,
-  },
-  {
-    name: "Wi-Fi Disconnects (Clarification Loop Demo)",
-    title: "Intermittent Wi-Fi drops on Library 2nd floor",
-    description:
-      "Students reporting frequent packet loss and drops when roaming between APs near reading room 2B.",
-    category: "NETWORK" as Category,
-    impact: "MEDIUM" as Impact,
-    urgency: "HIGH" as Urgency,
-  },
-  {
-    name: "Lecture Hall Projector (Hardware Demo)",
-    title: "Lecture Hall 2 projector bulb failed before class",
-    description:
-      "The ceiling mounted Epson projector shows a flashing red lamp indicator and does not turn on.",
-    category: "HARDWARE" as Category,
-    impact: "MEDIUM" as Impact,
-    urgency: "MEDIUM" as Urgency,
-  },
-];
+/** Wait for a pause in typing before asking the server for suggestions. */
+const DRAFT_DEBOUNCE_MS = 500;
 
 export default function NewIncidentPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<Category>("NETWORK");
-  const [impact, setImpact] = useState<Impact>("HIGH");
-  const [urgency, setUrgency] = useState<Urgency>("HIGH");
+  const [category, setCategory] = useState<Category>("APPLICATION");
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [impact, setImpact] = useState<Impact>("MEDIUM");
+  const [urgency, setUrgency] = useState<Urgency>("MEDIUM");
+  const [serviceId, setServiceId] = useState("");
+  const [services, setServices] = useState<ItService[]>([]);
+  const [suggestion, setSuggestion] = useState<CategorySuggestion | null>(null);
+  const [duplicates, setDuplicates] = useState<SimilarIncident[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const applyPreset = (preset: (typeof DEMO_PRESETS)[0]) => {
-    setTitle(preset.title);
-    setDescription(preset.description);
-    setCategory(preset.category);
-    setImpact(preset.impact);
-    setUrgency(preset.urgency);
-  };
+  useEffect(() => {
+    if (user)
+      api
+        .listServices()
+        .then(setServices)
+        .catch(() => {});
+  }, [user]);
+
+  // Category suggestion and duplicate check run together on the draft text.
+  useEffect(() => {
+    if (!user || (title.trim().length < 4 && description.trim().length < 10)) {
+      setSuggestion(null);
+      setDuplicates([]);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api
+        .suggestCategory(title, description)
+        .then((s) => active && setSuggestion(s.category ? s : null))
+        .catch(() => {});
+      api
+        .checkDuplicates(title, description)
+        .then((d) => active && setDuplicates(d))
+        .catch(() => {});
+    }, DRAFT_DEBOUNCE_MS);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [title, description, user]);
+
+  // Pre-select the suggestion until the reporter picks a category themselves.
+  useEffect(() => {
+    if (suggestion?.category && !categoryTouched) setCategory(suggestion.category);
+  }, [suggestion, categoryTouched]);
+
+  const service = services.find((s) => s.id === serviceId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) {
-      setError("Please provide both title and description.");
+      setError("Add a title and a description.");
       return;
     }
 
@@ -73,6 +91,7 @@ export default function NewIncidentPage() {
         category,
         impact,
         urgency,
+        serviceId: serviceId || undefined,
       });
       router.push(`/incidents/${created.id}`);
     } catch (err: unknown) {
@@ -82,325 +101,164 @@ export default function NewIncidentPage() {
     }
   };
 
-  const currentPriority = calculateMatrixPriority(impact, urgency);
+  if (loading || !user) return <output className="empty">Loading…</output>;
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-      <div style={{ marginBottom: "1.5rem" }}>
-        <Link
-          href="/"
-          style={{
-            fontSize: "0.8125rem",
-            color: "var(--accent)",
-            fontWeight: 500,
-            display: "inline-block",
-            marginBottom: "0.5rem",
-          }}
-        >
-          &larr; Back to Incidents
-        </Link>
-        <h1
-          style={{
-            fontSize: "1.5rem",
-            fontWeight: 700,
-            letterSpacing: "-0.03em",
-            color: "var(--text-primary)",
-          }}
-        >
-          Report New Incident
-        </h1>
-        <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-          Submit issue details for automated technician assignment and SLA tracking.
-        </p>
-      </div>
-
-      {/* Preset Buttons for Demo Ease */}
-      <div
-        style={{
-          backgroundColor: "#f8fafc",
-          border: "1px solid var(--border-color)",
-          borderRadius: "6px",
-          padding: "1rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "0.75rem",
-            fontWeight: 600,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            color: "var(--text-muted)",
-            marginBottom: "0.5rem",
-          }}
-        >
-          Demo Walkthrough Presets (1-Click Fill)
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-          {DEMO_PRESETS.map((preset) => (
-            <button
-              key={preset.name}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              style={{
-                fontSize: "0.75rem",
-                padding: "0.35rem 0.65rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                backgroundColor: "white",
-                color: "var(--text-primary)",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              {preset.name}
-            </button>
-          ))}
+    <>
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link href="/">Incidents</Link>
+        <span aria-hidden="true">/</span>
+        <span>New</span>
+      </nav>
+      <div className="page-header">
+        <div>
+          <h1>Report an issue</h1>
+          <p>The more detail you give, the faster it gets fixed.</p>
         </div>
       </div>
 
-      {error && (
-        <div
-          style={{
-            backgroundColor: "#fef2f2",
-            color: "#b91c1c",
-            padding: "0.6rem 0.85rem",
-            borderRadius: "4px",
-            fontSize: "0.8125rem",
-            marginBottom: "1.25rem",
-            border: "1px solid #fecaca",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          backgroundColor: "var(--bg-surface)",
-          border: "1px solid var(--border-color)",
-          borderRadius: "6px",
-          padding: "1.5rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "1.25rem",
-        }}
-      >
-        {/* Title */}
-        <div>
-          <label
-            htmlFor="incident-title"
-            style={{
-              display: "block",
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              marginBottom: "0.25rem",
-            }}
-          >
-            Incident Title *
+      <div className="form-grid">
+        <form className="card form-card" onSubmit={handleSubmit}>
+          {error && (
+            <p className="alert" role="alert">
+              {error}
+            </p>
+          )}
+          <label className="field">
+            Title
+            <input
+              required
+              maxLength={200}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="A short summary of the problem"
+            />
           </label>
-          <input
-            id="incident-title"
-            type="text"
-            required
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Switch offline in Lab 304"
-            style={{
-              width: "100%",
-              padding: "0.55rem 0.75rem",
-              borderRadius: "4px",
-              border: "1px solid var(--border-color)",
-              fontSize: "0.875rem",
-              backgroundColor: "var(--bg-primary)",
-              color: "var(--text-primary)",
-            }}
-          />
-        </div>
-
-        {/* Description */}
-        <div>
-          <label
-            htmlFor="incident-desc"
-            style={{
-              display: "block",
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              color: "var(--text-secondary)",
-              marginBottom: "0.25rem",
-            }}
-          >
-            Description & Diagnostic Symptoms *
+          <label className="field">
+            What’s happening?
+            <textarea
+              required
+              rows={7}
+              maxLength={10000}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Where is it, who’s affected, and what have you already tried?"
+            />
           </label>
-          <textarea
-            id="incident-desc"
-            rows={4}
-            required
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what occurred, impacted rooms or devices, and troubleshooting steps attempted..."
-            style={{
-              width: "100%",
-              padding: "0.55rem 0.75rem",
-              borderRadius: "4px",
-              border: "1px solid var(--border-color)",
-              fontSize: "0.875rem",
-              backgroundColor: "var(--bg-primary)",
-              color: "var(--text-primary)",
-              fontFamily: "inherit",
-            }}
-          />
-        </div>
 
-        {/* Category, Impact, Urgency row */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-            gap: "1rem",
-          }}
-        >
-          {/* Category */}
-          <div>
-            <label
-              htmlFor="incident-category"
-              style={{
-                display: "block",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                color: "var(--text-secondary)",
-                marginBottom: "0.25rem",
-              }}
-            >
+          {duplicates.length > 0 && (
+            <output className="callout callout-warn">
+              <p className="callout-title">This may already be reported</p>
+              <ul className="plain-list">
+                {duplicates.map((d) => (
+                  <li key={d.id}>
+                    <Link href={`/incidents/${d.id}`} className="link">
+                      {d.incidentNumber}
+                    </Link>{" "}
+                    {d.title}{" "}
+                    <span className="muted">· {Math.round(d.similarityScore * 100)}% match</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="field-hint">
+                If it’s the same problem, add details there instead of opening a new ticket.
+              </p>
+            </output>
+          )}
+
+          <label className="field">
+            Affected service
+            <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
+              <option value="">Not sure / other</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {service?.description && <span className="field-hint">{service.description}</span>}
+          </label>
+
+          <div className="field-row">
+            <label className="field">
               Category
+              <select
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value as Category);
+                  setCategoryTouched(true);
+                }}
+              >
+                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {suggestion?.category && (
+                <span className="field-hint">
+                  {suggestion.category === category ? "Suggested" : "Suggestion"}:{" "}
+                  {CATEGORY_LABELS[suggestion.category]}
+                  {suggestion.matchedKeywords.length > 0 &&
+                    ` (from “${suggestion.matchedKeywords.slice(0, 3).join("”, “")}”)`}
+                  {suggestion.category !== category && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() => suggestion.category && setCategory(suggestion.category)}
+                      >
+                        Use it
+                      </button>
+                    </>
+                  )}
+                </span>
+              )}
             </label>
-            <select
-              id="incident-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as Category)}
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                fontSize: "0.875rem",
-                backgroundColor: "var(--bg-primary)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="NETWORK">NETWORK (Routers, Switches, Wi-Fi)</option>
-              <option value="HARDWARE">HARDWARE (Desktops, Printers, Servers)</option>
-              <option value="SOFTWARE">SOFTWARE (OS, Applications, ERP)</option>
-              <option value="ACCESS">ACCESS (Accounts, Permissions, VPN)</option>
-            </select>
-          </div>
-
-          {/* Impact */}
-          <div>
-            <label
-              htmlFor="incident-impact"
-              style={{
-                display: "block",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                color: "var(--text-secondary)",
-                marginBottom: "0.25rem",
-              }}
-            >
-              Impact (Scope of disruption)
+            <label className="field">
+              Who’s affected?
+              <select value={impact} onChange={(e) => setImpact(e.target.value as Impact)}>
+                <option value="LOW">Just me</option>
+                <option value="MEDIUM">My team</option>
+                <option value="HIGH">Several teams</option>
+              </select>
             </label>
-            <select
-              id="incident-impact"
-              value={impact}
-              onChange={(e) => setImpact(e.target.value as Impact)}
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                fontSize: "0.875rem",
-                backgroundColor: "var(--bg-primary)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="HIGH">HIGH (Campus-wide / Multiple Labs)</option>
-              <option value="MEDIUM">MEDIUM (Department / Workgroup)</option>
-              <option value="LOW">LOW (Single User)</option>
-            </select>
-          </div>
-
-          {/* Urgency */}
-          <div>
-            <label
-              htmlFor="incident-urgency"
-              style={{
-                display: "block",
-                fontSize: "0.8125rem",
-                fontWeight: 600,
-                color: "var(--text-secondary)",
-                marginBottom: "0.25rem",
-              }}
-            >
-              Urgency (Time criticality)
+            <label className="field">
+              How urgent?
+              <select value={urgency} onChange={(e) => setUrgency(e.target.value as Urgency)}>
+                <option value="LOW">It can wait</option>
+                <option value="MEDIUM">Soon</option>
+                <option value="HIGH">I’m blocked</option>
+              </select>
             </label>
-            <select
-              id="incident-urgency"
-              value={urgency}
-              onChange={(e) => setUrgency(e.target.value as Urgency)}
-              style={{
-                width: "100%",
-                padding: "0.5rem 0.75rem",
-                borderRadius: "4px",
-                border: "1px solid var(--border-color)",
-                fontSize: "0.875rem",
-                backgroundColor: "var(--bg-primary)",
-                color: "var(--text-primary)",
-              }}
-            >
-              <option value="HIGH">HIGH (Critical deadline / Exam in progress)</option>
-              <option value="MEDIUM">MEDIUM (Work degraded)</option>
-              <option value="LOW">LOW (Workaround available)</option>
-            </select>
           </div>
-        </div>
+          <div className="form-actions">
+            <Link href="/" className="btn">
+              Cancel
+            </Link>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? "Submitting…" : "Submit ticket"}
+            </button>
+          </div>
+        </form>
 
-        {/* Live Priority Matrix Calculator Display */}
-        <PriorityMatrixPreview impact={impact} urgency={urgency} />
-
-        {/* Submit button */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: "1rem",
-            marginTop: "0.5rem",
-          }}
-        >
-          <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-            Will create ticket with priority <strong>{currentPriority}</strong>
-          </span>
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              padding: "0.6rem 1.25rem",
-              backgroundColor: "var(--accent)",
-              color: "white",
-              borderRadius: "4px",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              border: "none",
-              cursor: "pointer",
-              opacity: submitting ? 0.7 : 1,
-            }}
-          >
-            {submitting ? "Submitting Incident..." : "Submit Incident"}
-          </button>
-        </div>
-      </form>
-    </div>
+        <aside className="card card-body">
+          <h2 className="section-title">Priority</h2>
+          <p className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            Set from who’s affected (rows), how urgent it is (columns)
+            {service
+              ? ` and how critical ${service.name} is (${CRITICALITY_LABELS[service.criticality].toLowerCase()})`
+              : ""}
+            .
+          </p>
+          <PriorityMatrixPreview
+            impact={impact}
+            urgency={urgency}
+            criticality={service?.criticality}
+          />
+        </aside>
+      </div>
+    </>
   );
 }

@@ -42,10 +42,10 @@ class AuthControllerTest {
   @Test
   @DisplayName("POST /api/v1/auth/login succeeds with valid credentials")
   void testLoginSuccess() throws Exception {
-    LoginRequest request = new LoginRequest("employee1", "password123");
+    LoginRequest request = new LoginRequest("emp", "password123");
     UserProfileResponse profile =
         new UserProfileResponse(
-            UUID.randomUUID(), "employee1", "Prof. Alan Turing", "aturing@campus.edu", Role.EMPLOYEE, Set.of());
+            UUID.randomUUID(), "emp", "Employee", null, Role.EMPLOYEE, Set.of());
     AuthResponse authResponse = new AuthResponse("mock.jwt.token", profile);
 
     when(userService.login(any(LoginRequest.class))).thenReturn(authResponse);
@@ -57,6 +57,6 @@ class AuthControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.token").value("mock.jwt.token"))
-        .andExpect(jsonPath("$.user.username").value("employee1"));
+        .andExpect(jsonPath("$.user.username").value("emp"));
   }
 }

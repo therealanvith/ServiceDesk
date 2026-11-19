@@ -64,11 +64,26 @@ Ensure the following tools are installed on your workstation:
    **Pre-seeded Demo Accounts** (all passwords: `password123`):
    | Username | Role | Full Name | Domain Focus / Skills |
    | :--- | :--- | :--- | :--- |
-   | `employee1` | `EMPLOYEE` | Prof. Alan Turing | Standard user & incident reporter |
-   | `tech_network` | `TECHNICIAN` | Alice Smith | Network Specialist (`NETWORK`) |
-   | `tech_hardware` | `TECHNICIAN` | Bob Jones | Hardware Specialist (`HARDWARE`) |
-   | `tech_lead` | `TECHNICIAN` | Charlie Brown | Lead Systems (`NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`) |
-   | `admin` | `ADMINISTRATOR` | System Administrator | System Configuration & Strategy Engine |
+   | `emp` | `EMPLOYEE` | Employee | Reports and follows their own tickets |
+   | `tech_net` | `TECHNICIAN` | Network Technician | `NETWORK` |
+   | `tech_hw` | `TECHNICIAN` | Hardware Technician | `HARDWARE` |
+   | `tech_lead` | `TECHNICIAN` | Lead Technician | `NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS` |
+   | `admin` | `ADMINISTRATOR` | Administrator | Settings, assignment rules, priority overrides |
+
+   Demo accounts are for local use only; deactivate them from **Users** in a real deployment.
+
+   **Root account**: created on first start from `ROOT_USERNAME` / `ROOT_PASSWORD` in `.env`
+   (see `.env.example`; at least 12 characters). Root can do everything an administrator can,
+   and is the only role that can grant or remove administrator access.
+
+   **Google sign-in**: create an OAuth 2.0 *Web application* client in Google Cloud Console,
+   add `http://localhost:3000` to its *Authorized JavaScript origins*, put the client id in
+   `GOOGLE_CLIENT_ID` in `.env`, and restart the backend. The "Continue with Google" button
+   appears automatically. First-time Google users become employees; promote them from **Users**.
+   `GOOGLE_ALLOWED_DOMAINS` optionally restricts sign-in to your organisation's domain.
+
+   **Who sees what**: employees see the tickets they reported, technicians the tickets assigned
+   to them, administrators and root everything. Full matrix in [`docs/security.md`](docs/security.md).
 
    > **Note on Existing Databases**: If you previously launched Docker containers before Flyway migration `V6`, you can immediately apply the verified `password123` credentials to your running database:
    > ```bash

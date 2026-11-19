@@ -20,6 +20,11 @@ spring:
       ddl-auto: validate
     show-sql: false
 
+# No fallback here: a deployed instance must never sign tokens with the public dev default.
+app:
+  security:
+    jwt-secret: ${JWT_SECRET}
+
 logging:
   level:
     com.servicedesk: INFO

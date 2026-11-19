@@ -16,6 +16,8 @@ public class SlaWindow {
   private Instant pausedAt;
   private SlaStatus status;
 
+  private static final Duration DEFAULT_WARNING_WINDOW = Duration.ofMinutes(30);
+
   public SlaWindow(
       Instant responseDeadline,
       Instant resolutionDeadline,
@@ -31,27 +33,15 @@ public class SlaWindow {
 
   public static SlaWindow calculateInitial(Priority priority, Instant startTime) {
     Objects.requireNonNull(priority, "Priority must not be null");
+    return calculateInitial(SlaPolicy.defaultFor(priority), startTime);
+  }
+
+  public static SlaWindow calculateInitial(SlaPolicy policy, Instant startTime) {
+    Objects.requireNonNull(policy, "SLA policy must not be null");
     Objects.requireNonNull(startTime, "Start time must not be null");
-
-    Duration responseWindow =
-        switch (priority) {
-          case P1_CRITICAL -> Duration.ofMinutes(15);
-          case P2_HIGH -> Duration.ofMinutes(30);
-          case P3_MEDIUM -> Duration.ofHours(2);
-          case P4_LOW -> Duration.ofHours(4);
-        };
-
-    Duration resolutionWindow =
-        switch (priority) {
-          case P1_CRITICAL -> Duration.ofHours(2);
-          case P2_HIGH -> Duration.ofHours(4);
-          case P3_MEDIUM -> Duration.ofHours(8);
-          case P4_LOW -> Duration.ofHours(24);
-        };
-
     return new SlaWindow(
-        startTime.plus(responseWindow),
-        startTime.plus(resolutionWindow),
+        startTime.plus(policy.responseTarget()),
+        startTime.plus(policy.resolutionTarget()),
         Duration.ZERO,
         null,
         SlaStatus.WITHIN_SLA);
@@ -77,7 +67,16 @@ public class SlaWindow {
   }
 
   public SlaStatus checkBreach(Instant now) {
+    return checkBreach(now, DEFAULT_WARNING_WINDOW);
+  }
+
+  /**
+   * Re-evaluates the status. {@code warningWindow} is how long before the deadline the ticket is
+   * flagged as at risk; callers scale it to the SLA so short targets still get a usable warning.
+   */
+  public SlaStatus checkBreach(Instant now, Duration warningWindow) {
     Objects.requireNonNull(now, "Current time must not be null");
+    Duration warning = warningWindow != null ? warningWindow : DEFAULT_WARNING_WINDOW;
 
     // If currently paused, compute effective current deadline
     Instant effectiveDeadline = this.resolutionDeadline;
@@ -92,8 +91,7 @@ public class SlaWindow {
       this.status = SlaStatus.BREACHED;
     } else {
       Duration remaining = Duration.between(now, effectiveDeadline);
-      // Warning threshold is at 25% remaining time (75% elapsed) or under 30 minutes
-      if (remaining.toMinutes() <= 30) {
+      if (remaining.compareTo(warning) <= 0) {
         this.status = SlaStatus.WARNING_BREACH_IMMINENT;
       } else {
         this.status = SlaStatus.WITHIN_SLA;

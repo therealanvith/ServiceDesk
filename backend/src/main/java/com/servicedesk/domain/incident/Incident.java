@@ -7,8 +7,10 @@ import com.servicedesk.domain.sla.SlaStatus;
 import com.servicedesk.domain.sla.SlaWindow;
 import com.servicedesk.domain.user.UserId;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Aggregate root representing an IT service desk incident ticket.
@@ -32,6 +34,11 @@ public class Incident {
   private Instant updatedAt;
   private Instant resolvedAt;
   private Instant closedAt;
+  private UUID affectedServiceId;
+  private Instant respondedAt;
+  private Instant escalatedAt;
+  private Integer feedbackRating;
+  private String feedbackComment;
   private Clock clock;
 
   public Incident(
@@ -124,16 +131,25 @@ public class Incident {
     }
 
     // Closed or cancelled tickets are not breached further
-    if (this.currentState.getStatus().isTerminal()) {
+    if (this.currentState.getStatus().isTerminal() || this.currentState.getStatus() == IncidentStatus.RESOLVED) {
       return this.slaWindow.getStatus();
     }
 
-    SlaStatus evaluated = this.slaWindow.checkBreach(now);
-    if (evaluated == SlaStatus.BREACHED && this.priority != Priority.P1_CRITICAL) {
+    SlaStatus previous = this.slaWindow.getStatus();
+    SlaStatus evaluated = this.slaWindow.checkBreach(now, warningWindow());
+    if (previous != SlaStatus.BREACHED && evaluated == SlaStatus.BREACHED && this.priority != Priority.P1_CRITICAL) {
       this.priority = this.priority.escalate();
     }
     this.updatedAt = now;
     return evaluated;
+  }
+
+  /** Warn when the last quarter of the (pause-adjusted) resolution window is reached. */
+  private Duration warningWindow() {
+    Duration total =
+        Duration.between(createdAt, slaWindow.getResolutionDeadline())
+            .minus(slaWindow.getPausedDuration());
+    return total.isNegative() ? Duration.ZERO : total.dividedBy(4);
   }
 
   public void transitionTo(IncidentState newState) {
@@ -248,6 +264,61 @@ public class Incident {
 
   public void setClosedAt(Instant closedAt) {
     this.closedAt = closedAt;
+  }
+
+  public UUID getAffectedServiceId() {
+    return affectedServiceId;
+  }
+
+  public void setAffectedServiceId(UUID affectedServiceId) {
+    this.affectedServiceId = affectedServiceId;
+  }
+
+  /** First time a technician acted on the ticket; measured against the response target. */
+  public Instant getRespondedAt() {
+    return respondedAt;
+  }
+
+  public void setRespondedAt(Instant respondedAt) {
+    this.respondedAt = respondedAt;
+  }
+
+  public void markResponded(Instant at) {
+    if (this.respondedAt == null) {
+      this.respondedAt = at;
+    }
+  }
+
+  public boolean isResponseOverdue(Instant now) {
+    return respondedAt == null
+        && slaWindow != null
+        && currentState.getStatus().isActive()
+        && now.isAfter(slaWindow.getResponseDeadline());
+  }
+
+  public Instant getEscalatedAt() {
+    return escalatedAt;
+  }
+
+  public void setEscalatedAt(Instant escalatedAt) {
+    this.escalatedAt = escalatedAt;
+  }
+
+  public Integer getFeedbackRating() {
+    return feedbackRating;
+  }
+
+  public String getFeedbackComment() {
+    return feedbackComment;
+  }
+
+  /** Reporter's satisfaction after closure: 1 (poor) to 5 (excellent). */
+  public void recordFeedback(Integer rating, String comment) {
+    if (rating != null && (rating < 1 || rating > 5)) {
+      throw new IllegalArgumentException("Rating must be between 1 and 5");
+    }
+    this.feedbackRating = rating;
+    this.feedbackComment = comment;
   }
 
   public Clock getClock() {

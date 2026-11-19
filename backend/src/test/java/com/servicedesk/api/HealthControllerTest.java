@@ -44,6 +44,6 @@ class HealthControllerTest {
 
   @Test
   void unmappedEndpointsShouldBeDeniedByDefault() throws Exception {
-    mockMvc.perform(get("/api/v1/incidents")).andExpect(status().isForbidden());
+    mockMvc.perform(get("/api/v1/incidents")).andExpect(status().isUnauthorized());
   }
 }

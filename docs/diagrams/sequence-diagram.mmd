@@ -33,11 +33,11 @@ sequenceDiagram
     %% Automated Assignment Strategy
     AppService->>AsgnStrategy: selectTechnician(incident, availableTechnicians)
     activate AsgnStrategy
-    AsgnStrategy-->>AppService: selectedTechnician (e.g. Tech_Alice)
+    AsgnStrategy-->>AppService: selectedTechnician (e.g. tech_net)
     deactivate AsgnStrategy
 
     %% Domain State Transition
-    AppService->>DomainAggregate: assign(Tech_Alice.id, actorId)
+    AppService->>DomainAggregate: assign(tech_net.id, actorId)
     activate DomainAggregate
     DomainAggregate->>DomainAggregate: transitionState(AssignedState)
     DomainAggregate->>DomainAggregate: recordEvent(IncidentAssignedEvent)
@@ -53,14 +53,14 @@ sequenceDiagram
     activate EventPub
     EventPub->>AuditListener: onEvent(IncidentAssignedEvent)
     activate AuditListener
-    AuditListener->>AuditListener: persistAuditRecord("ASSIGNED", null, Tech_Alice.id)
+    AuditListener->>AuditListener: persistAuditRecord("ASSIGNED", null, tech_net.id)
     AuditListener-->>EventPub: done
     deactivate AuditListener
 
     EventPub->>NotifListener: onEvent(IncidentAssignedEvent)
     activate NotifListener
-    NotifListener->>NotifListener: dispatchInAppNotification(Tech_Alice)
-    NotifListener->>NotifListener: dispatchEmailNotification(Tech_Alice)
+    NotifListener->>NotifListener: dispatchInAppNotification(tech_net)
+    NotifListener->>NotifListener: dispatchEmailNotification(tech_net)
     NotifListener-->>EventPub: done
     deactivate NotifListener
     deactivate EventPub

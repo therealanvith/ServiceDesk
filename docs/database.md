@@ -86,6 +86,37 @@ In-app notification records for users.
 
 ---
 
+### 2.7 `it_services`
+The IT service catalogue that incidents are reported against.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key |
+| `name` | VARCHAR(100) | Unique, e.g. "Payment Application" |
+| `description` | TEXT | Shown to reporters |
+| `criticality` | VARCHAR(20) | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`; feeds the priority score |
+| `is_active` | BOOLEAN | Retired services keep their history but leave the report form |
+| `created_at` | TIMESTAMPTZ | |
+
+### 2.8 `sla_policies`
+Administrator-editable targets, one row per priority.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `priority` | VARCHAR(30) | Primary key: `P1_CRITICAL` … `P4_LOW` |
+| `response_minutes` | INTEGER | > 0 |
+| `resolution_minutes` | INTEGER | ≥ response_minutes (CHECK) |
+| `updated_at` | TIMESTAMPTZ | |
+
+### 2.9 Later additions to existing tables
+- `incidents.service_id` (FK → `it_services`), `responded_at` (first technician action, measured against the response target), `escalated_at`, `feedback_rating` (SMALLINT 1–5, CHECK) and `feedback_comment`.
+- `incidents.version`: optimistic locking counter.
+- `users.password_hash` is nullable (Google-only accounts); `users.email` is nullable; `users.google_sub` holds the stable Google account id (unique when present).
+- `users.role` also allows `ROOT`; a partial unique index (`WHERE role = 'ROOT'`) guarantees a single root account.
+- Categories now include `DATABASE`, `CLOUD`, `SECURITY`, `APPLICATION` and `STORAGE` (CHECK constraints on `incidents.category` and `user_skills.category`).
+
+---
+
 ## 3. Indexing & Query Optimization Strategy
 
 To satisfy **NFR-02** ($< 200\text{ ms}$ query response), the following indexes are specified:
@@ -110,3 +141,9 @@ To satisfy **NFR-02** ($< 200\text{ ms}$ query response), the following indexes 
 - **`V3__create_incidents_and_audit.sql`**: Incidents, SLA columns, comments, and audit logging tables.
 - **`V4__create_notifications.sql`**: In-app notifications table.
 - **`V5__seed_demo_data.sql`**: Seed data with sample employees, specialized technicians, and active demo incidents.
+- **`V6__fix_demo_user_passwords.sql`**: Corrects the demo account password hashes.
+- **`V7__persistent_incident_numbers.sql`**: Database sequence for `INC-` numbers, safe across restarts and instances.
+- **`V8__incident_optimistic_locking.sql`**: `version` column for concurrent-edit protection.
+- **`V9__role_based_demo_accounts.sql`**: Demo accounts named by role (`emp`, `tech_net`, `tech_hw`, `tech_lead`, `admin`); email made optional.
+- **`V10__root_role_and_google_sign_in.sql`**: `ROOT` role, single-root index, Google account id, optional password.
+- **`V11__services_sla_policies_feedback.sql`**: IT services, SLA policies, wider categories, response/escalation tracking and feedback.

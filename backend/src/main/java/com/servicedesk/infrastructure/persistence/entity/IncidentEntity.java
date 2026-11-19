@@ -15,6 +15,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -93,6 +96,66 @@ public class IncidentEntity {
 
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
+
+  @Version
+  @Column(name = "version", nullable = false)
+  private Long version;
+
+  @Column(name = "service_id")
+  private UUID serviceId;
+
+  @Column(name = "responded_at")
+  private Instant respondedAt;
+
+  @Column(name = "escalated_at")
+  private Instant escalatedAt;
+
+  @Column(name = "feedback_rating")
+  @JdbcTypeCode(SqlTypes.SMALLINT) // 1-5 rating, stored as SMALLINT
+  private Integer feedbackRating;
+
+  @Column(name = "feedback_comment", columnDefinition = "TEXT")
+  private String feedbackComment;
+
+  public UUID getServiceId() {
+    return serviceId;
+  }
+
+  public void setServiceId(UUID serviceId) {
+    this.serviceId = serviceId;
+  }
+
+  public Instant getRespondedAt() {
+    return respondedAt;
+  }
+
+  public void setRespondedAt(Instant respondedAt) {
+    this.respondedAt = respondedAt;
+  }
+
+  public Instant getEscalatedAt() {
+    return escalatedAt;
+  }
+
+  public void setEscalatedAt(Instant escalatedAt) {
+    this.escalatedAt = escalatedAt;
+  }
+
+  public Integer getFeedbackRating() {
+    return feedbackRating;
+  }
+
+  public void setFeedbackRating(Integer feedbackRating) {
+    this.feedbackRating = feedbackRating;
+  }
+
+  public String getFeedbackComment() {
+    return feedbackComment;
+  }
+
+  public void setFeedbackComment(String feedbackComment) {
+    this.feedbackComment = feedbackComment;
+  }
 
   public IncidentEntity() {}
 
