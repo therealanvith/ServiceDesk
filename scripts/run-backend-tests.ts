@@ -58,7 +58,7 @@ function runBackendTests(): void {
 
   console.log("\n[pre-push] Running backend test suite (test)...");
 
-  const result = spawnSync(mvnCmd, ["-B", "-q", "test"], {
+  const result = spawnSync(mvnCmd, ["-B", "--no-transfer-progress", "test"], {
     cwd: backendDir,
     shell: true,
     stdio: "inherit",

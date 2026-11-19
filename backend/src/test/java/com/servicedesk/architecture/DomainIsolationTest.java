@@ -15,8 +15,8 @@ import com.tngtech.archunit.lang.ArchRule;
  * infrastructure, or api packages
  */
 @AnalyzeClasses(
-    packages = "com.servicedesk",
-    importOptions = {ImportOption.DoNotIncludeTests.class})
+    packages = "com.servicedesk.domain",
+    importOptions = {ImportOption.DoNotIncludeTests.class, ImportOption.DoNotIncludeJars.class})
 public class DomainIsolationTest {
 
   @ArchTest

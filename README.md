@@ -55,24 +55,79 @@ Ensure the following tools are installed on your workstation:
    docker compose up --build
    ```
 
-5. **Access services**:
+5. **Access services & Seed Demo Accounts**:
    - Frontend UI: [http://localhost:3000](http://localhost:3000)
    - Backend Health API: [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
    - Spring Boot Actuator: [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
    - PostgreSQL Database: `localhost:5432` (`servicedesk` / `servicedesk_user` / `servicedesk_dev_password`)
+
+   **Pre-seeded Demo Accounts** (all passwords: `password123`):
+   | Username | Role | Full Name | Domain Focus / Skills |
+   | :--- | :--- | :--- | :--- |
+   | `employee1` | `EMPLOYEE` | Prof. Alan Turing | Standard user & incident reporter |
+   | `tech_network` | `TECHNICIAN` | Alice Smith | Network Specialist (`NETWORK`) |
+   | `tech_hardware` | `TECHNICIAN` | Bob Jones | Hardware Specialist (`HARDWARE`) |
+   | `tech_lead` | `TECHNICIAN` | Charlie Brown | Lead Systems (`NETWORK`, `HARDWARE`, `SOFTWARE`, `ACCESS`) |
+   | `admin` | `ADMINISTRATOR` | System Administrator | System Configuration & Strategy Engine |
+
+---
+
+## Architecture & Implementation Overview
+
+The system is built across three fully implemented phases following strict Clean/Hexagonal Architecture:
+
+1. **Phase 1: Pure OOP Domain Core (Framework-Free)**
+   - **GoF State Pattern**: Encapsulates incident lifecycle (`ReportedState`, `AssignedState`, `InProgressState`, `PendingInfoState`, `ResolvedState`, `ClosedState`, `CancelledState`). Invalid transitions throw checked domain exceptions.
+   - **GoF Strategy Pattern**: Dynamic automated technician dispatching with interchangeable strategies (`SkillMatchingStrategy`, `LeastLoadedStrategy`, `RoundRobinStrategy`).
+   - **GoF Observer Pattern**: Incident event dispatcher decouples side-effects (`AuditLoggerListener`, `NotificationListener`).
+   - **SLA & Priority Matrices**: Urgency $\times$ Impact matrix calculates priority ($P1$–$P4$); response and resolution deadlines pause dynamically in `PENDING_INFO` and recalculate on resumption.
+   - **Domain Isolation**: 100% pure Java without Spring or JPA annotations, guarded continuously by **ArchUnit** tests.
+
+2. **Phase 2: Spring Boot 3 Backend & Persistence**
+   - **Persistence Adapters**: Spring Data JPA repositories with domain entity $\leftrightarrow$ JPA entity mappers.
+   - **Database Migrations**: Flyway migrations (V1 baseline through V5 demo seed data) managing PostgreSQL tables, foreign keys, and indexes.
+   - **Security & RBAC**: Stateless JWT authentication with role-based access control (`EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR`).
+   - **REST API (`/api/v1`)**: Controllers for Auth, Incidents, Comments, Admin Strategy management, and SLA evaluation workers.
+
+3. **Phase 3: Next.js 15 Client & Worklists**
+   - **App Router & Strict TypeScript**: Modern Next.js UI styled with clean CSS design tokens.
+   - **Role-Based Worklists**: Dynamic filtering by Status, Priority, Category, Assignee, Reporter, SLA status, and full-text search.
+   - **Interactive Priority Matrix**: Real-time visual impact/urgency calculator for incident submission.
+   - **Incident Lifecycle Actions**: Interactive modals for Request Info (pauses SLA), Provide Info (resumes SLA), Resolve, Reassign, Override Priority, and Close.
+   - **Audit Timeline & Similar Tickets**: Real-time audit history and automated lexical similarity detection for recurring incidents.
+   - **Admin Strategy Console**: Dynamic runtime switching of GoF technician assignment algorithms and capacity monitoring.
 
 ---
 
 ## Git Hooks & Quality Checks (Lefthook)
 
 Lefthook automatically validates your work before it enters git history:
-- **`pre-commit`**: Automatically formats staged frontend files with Biome, validates Java formatting with Spotless (Google Java Format), checks TypeScript types, and prevents staging secret files (`.env`) or private keys.
-- **`pre-push`**: Runs backend tests (`mvn -B -q test` or `./mvnw`) and frontend checks before code is sent to the remote.
+- **`pre-commit`**: Formats staged frontend files with Biome, validates Java formatting with Spotless (Google Java Format), verifies TypeScript types (`tsc --noEmit`), and blocks any committed secrets (`.env` files, private keys, hardcoded passwords).
+- **`pre-push`**: Runs backend tests (`mvn -B -q test` or `./mvnw`) and full frontend build checks before code is sent to the remote.
 
-To run hooks manually:
+### Running Quality Checks Manually
+
+You can run individual quality checks or invoke Lefthook directly:
+
 ```bash
-bunx lefthook run pre-commit
-bunx lefthook run pre-push
+# 1. Frontend code formatting & linting (Biome)
+cd frontend && bun run lint
+
+# Automatically fix formatting issues
+cd frontend && bun run lint:fix
+
+# 2. Frontend TypeScript type verification
+cd frontend && bun run typecheck
+
+# 3. Backend Java formatting check (Google Java Format via Spotless)
+bun ./scripts/run-backend-lint.ts
+
+# 4. Staged secrets and credentials scanner
+bun ./scripts/check-staged-secrets.ts
+
+# 5. Run full Lefthook hook suites
+bun --cwd frontend run lefthook run pre-commit
+bun --cwd frontend run lefthook run pre-push
 ```
 
 ---

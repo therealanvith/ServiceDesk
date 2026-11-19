@@ -33,27 +33,21 @@ public class SlaWindow {
     Objects.requireNonNull(priority, "Priority must not be null");
     Objects.requireNonNull(startTime, "Start time must not be null");
 
-    Duration responseWindow;
-    Duration resolutionWindow;
+    Duration responseWindow =
+        switch (priority) {
+          case P1_CRITICAL -> Duration.ofMinutes(15);
+          case P2_HIGH -> Duration.ofMinutes(30);
+          case P3_MEDIUM -> Duration.ofHours(2);
+          case P4_LOW -> Duration.ofHours(4);
+        };
 
-    switch (priority) {
-      case P1_CRITICAL -> {
-        responseWindow = Duration.ofMinutes(15);
-        resolutionWindow = Duration.ofHours(2);
-      }
-      case P2_HIGH -> {
-        responseWindow = Duration.ofMinutes(30);
-        resolutionWindow = Duration.ofHours(4);
-      }
-      case P3_MEDIUM -> {
-        responseWindow = Duration.ofHours(2);
-        resolutionWindow = Duration.ofHours(8);
-      }
-      case P4_LOW -> {
-        responseWindow = Duration.ofHours(4);
-        resolutionWindow = Duration.ofHours(24);
-      }
-    }
+    Duration resolutionWindow =
+        switch (priority) {
+          case P1_CRITICAL -> Duration.ofHours(2);
+          case P2_HIGH -> Duration.ofHours(4);
+          case P3_MEDIUM -> Duration.ofHours(8);
+          case P4_LOW -> Duration.ofHours(24);
+        };
 
     return new SlaWindow(
         startTime.plus(responseWindow),
