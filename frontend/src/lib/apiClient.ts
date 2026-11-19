@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 export type Role = "EMPLOYEE" | "TECHNICIAN" | "ADMINISTRATOR";
 export type Category = "NETWORK" | "HARDWARE" | "SOFTWARE" | "ACCESS";
@@ -235,17 +234,19 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  listIncidents: (params: {
-    status?: IncidentStatus;
-    priority?: Priority;
-    category?: Category;
-    assigneeId?: string;
-    reporterId?: string;
-    slaStatus?: SlaStatus;
-    searchText?: string;
-    page?: number;
-    size?: number;
-  } = {}) => {
+  listIncidents: (
+    params: {
+      status?: IncidentStatus;
+      priority?: Priority;
+      category?: Category;
+      assigneeId?: string;
+      reporterId?: string;
+      slaStatus?: SlaStatus;
+      searchText?: string;
+      page?: number;
+      size?: number;
+    } = {}
+  ) => {
     const query = new URLSearchParams();
     if (params.status) query.set("status", params.status);
     if (params.priority) query.set("priority", params.priority);
@@ -321,8 +322,7 @@ export const api = {
   getAuditLogs: (id: string) => apiClient<AuditLogItem[]>(`/incidents/${id}/audit-logs`),
 
   // Intelligence
-  getSimilarIncidents: (id: string) =>
-    apiClient<SimilarIncident[]>(`/incidents/${id}/similar`),
+  getSimilarIncidents: (id: string) => apiClient<SimilarIncident[]>(`/incidents/${id}/similar`),
 
   // Admin
   getAssignmentConfig: () => apiClient<AssignmentConfig>("/admin/config/assignment"),

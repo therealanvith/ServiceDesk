@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  type IncidentDetail,
-  type Priority,
-  type TechnicianItem,
-  api,
-} from "@/lib/apiClient";
+import { type IncidentDetail, type Priority, type TechnicianItem, api } from "@/lib/apiClient";
 import { useEffect, useState } from "react";
 
 interface StateActionsProps {
@@ -42,13 +37,15 @@ export function StateActions({
   const [selectedTechId, setSelectedTechId] = useState("");
   const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
 
-  const isTechOrAdmin =
-    currentUserRole === "TECHNICIAN" || currentUserRole === "ADMINISTRATOR";
+  const isTechOrAdmin = currentUserRole === "TECHNICIAN" || currentUserRole === "ADMINISTRATOR";
   const isAdmin = currentUserRole === "ADMINISTRATOR";
 
   useEffect(() => {
     if (showAssignModal && isTechOrAdmin) {
-      api.listTechnicians().then(setTechnicians).catch(() => {});
+      api
+        .listTechnicians()
+        .then(setTechnicians)
+        .catch(() => {});
     }
   }, [showAssignModal, isTechOrAdmin]);
 
@@ -182,67 +179,57 @@ export function StateActions({
         )}
 
         {/* IN_PROGRESS STATE ACTIONS */}
-        {incident.status === "IN_PROGRESS" && (
+        {incident.status === "IN_PROGRESS" && isTechOrAdmin && (
           <>
-            {isTechOrAdmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowRequestInfoModal(true)}
-                  disabled={loading}
-                  style={warningBtnStyle}
-                >
-                  Request Information (Pause SLA)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowResolveModal(true)}
-                  disabled={loading}
-                  style={successBtnStyle}
-                >
-                  Resolve Incident
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAssignModal(true)}
-                  disabled={loading}
-                  style={secondaryBtnStyle}
-                >
-                  Reassign
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={() => setShowRequestInfoModal(true)}
+              disabled={loading}
+              style={warningBtnStyle}
+            >
+              Request Information (Pause SLA)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowResolveModal(true)}
+              disabled={loading}
+              style={successBtnStyle}
+            >
+              Resolve Incident
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAssignModal(true)}
+              disabled={loading}
+              style={secondaryBtnStyle}
+            >
+              Reassign
+            </button>
           </>
         )}
 
         {/* PENDING_INFO STATE ACTIONS */}
         {incident.status === "PENDING_INFO" && (
-          <>
-            <button
-              type="button"
-              onClick={() => setShowProvideInfoModal(true)}
-              disabled={loading}
-              style={successBtnStyle}
-            >
-              Provide Information (Resume SLA)
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setShowProvideInfoModal(true)}
+            disabled={loading}
+            style={successBtnStyle}
+          >
+            Provide Information (Resume SLA)
+          </button>
         )}
 
         {/* RESOLVED STATE ACTIONS */}
-        {incident.status === "RESOLVED" && (
-          <>
-            {(isReporter || isAdmin) && (
-              <button
-                type="button"
-                onClick={() => handleAction(() => api.closeIncident(incident.id))}
-                disabled={loading}
-                style={successBtnStyle}
-              >
-                Confirm Resolution & Close
-              </button>
-            )}
-          </>
+        {incident.status === "RESOLVED" && (isReporter || isAdmin) && (
+          <button
+            type="button"
+            onClick={() => handleAction(() => api.closeIncident(incident.id))}
+            disabled={loading}
+            style={successBtnStyle}
+          >
+            Confirm Resolution & Close
+          </button>
         )}
 
         {/* TERMINAL STATES */}
@@ -259,18 +246,16 @@ export function StateActions({
         )}
 
         {/* ADMIN PRIORITY OVERRIDE */}
-        {isAdmin &&
-          incident.status !== "CLOSED" &&
-          incident.status !== "CANCELLED" && (
-            <button
-              type="button"
-              onClick={() => setShowOverrideModal(true)}
-              disabled={loading}
-              style={{ ...secondaryBtnStyle, marginLeft: "auto" }}
-            >
-              Override Priority
-            </button>
-          )}
+        {isAdmin && incident.status !== "CLOSED" && incident.status !== "CANCELLED" && (
+          <button
+            type="button"
+            onClick={() => setShowOverrideModal(true)}
+            disabled={loading}
+            style={{ ...secondaryBtnStyle, marginLeft: "auto" }}
+          >
+            Override Priority
+          </button>
+        )}
       </div>
 
       {/* MODAL: ASSIGN */}
@@ -304,12 +289,7 @@ export function StateActions({
                 type="button"
                 onClick={() => {
                   setShowAssignModal(false);
-                  handleAction(() =>
-                    api.assignIncident(
-                      incident.id,
-                      selectedTechId || undefined
-                    )
-                  );
+                  handleAction(() => api.assignIncident(incident.id, selectedTechId || undefined));
                 }}
                 style={primaryBtnStyle}
               >
@@ -328,7 +308,8 @@ export function StateActions({
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Ask the reporter for clarification. The SLA resolution countdown will pause until they respond.
+              Ask the reporter for clarification. The SLA resolution countdown will pause until they
+              respond.
             </p>
             <textarea
               rows={3}
@@ -350,9 +331,7 @@ export function StateActions({
                 disabled={!questionText.trim()}
                 onClick={() => {
                   setShowRequestInfoModal(false);
-                  handleAction(() =>
-                    api.requestInfo(incident.id, questionText.trim())
-                  );
+                  handleAction(() => api.requestInfo(incident.id, questionText.trim()));
                 }}
                 style={warningBtnStyle}
               >
@@ -371,7 +350,8 @@ export function StateActions({
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-              Enter the requested details. Work status will return to IN_PROGRESS and SLA timers will resume.
+              Enter the requested details. Work status will return to IN_PROGRESS and SLA timers
+              will resume.
             </p>
             <textarea
               rows={3}
@@ -393,9 +373,7 @@ export function StateActions({
                 disabled={!answerText.trim()}
                 onClick={() => {
                   setShowProvideInfoModal(false);
-                  handleAction(() =>
-                    api.provideInfo(incident.id, answerText.trim())
-                  );
+                  handleAction(() => api.provideInfo(incident.id, answerText.trim()));
                 }}
                 style={successBtnStyle}
               >
@@ -433,9 +411,7 @@ export function StateActions({
                 disabled={!resolutionNotes.trim()}
                 onClick={() => {
                   setShowResolveModal(false);
-                  handleAction(() =>
-                    api.resolveIncident(incident.id, resolutionNotes.trim())
-                  );
+                  handleAction(() => api.resolveIncident(incident.id, resolutionNotes.trim()));
                 }}
                 style={successBtnStyle}
               >
@@ -473,9 +449,7 @@ export function StateActions({
                 disabled={!cancelReason.trim()}
                 onClick={() => {
                   setShowCancelModal(false);
-                  handleAction(() =>
-                    api.cancelIncident(incident.id, cancelReason.trim())
-                  );
+                  handleAction(() => api.cancelIncident(incident.id, cancelReason.trim()));
                 }}
                 style={dangerBtnStyle}
               >
@@ -549,11 +523,7 @@ export function StateActions({
                 onClick={() => {
                   setShowOverrideModal(false);
                   handleAction(() =>
-                    api.overridePriority(
-                      incident.id,
-                      overridePriority,
-                      overrideRemarks.trim()
-                    )
+                    api.overridePriority(incident.id, overridePriority, overrideRemarks.trim())
                   );
                 }}
                 style={primaryBtnStyle}

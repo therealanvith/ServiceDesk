@@ -1,9 +1,6 @@
 import type { Impact, Priority, Urgency } from "@/lib/apiClient";
 
-export function calculateMatrixPriority(
-  impact: Impact,
-  urgency: Urgency
-): Priority {
+export function calculateMatrixPriority(impact: Impact, urgency: Urgency): Priority {
   if (impact === "HIGH") {
     return urgency === "LOW" ? "P2_HIGH" : "P1_CRITICAL";
   }

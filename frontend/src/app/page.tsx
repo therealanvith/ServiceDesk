@@ -35,7 +35,9 @@ export default function IncidentsDashboardPage() {
 
   // Load backend health
   useEffect(() => {
-    checkBackendHealth().then(setHealth).catch(() => {});
+    checkBackendHealth()
+      .then(setHealth)
+      .catch(() => {});
   }, []);
 
   const loadIncidents = useCallback(async () => {
@@ -129,14 +131,9 @@ export default function IncidentsDashboardPage() {
               fontFamily: "var(--font-mono)",
               backgroundColor:
                 health?.status === "UP" ? "var(--status-up-bg)" : "var(--status-down-bg)",
-              color:
-                health?.status === "UP"
-                  ? "var(--status-up-text)"
-                  : "var(--status-down-text)",
+              color: health?.status === "UP" ? "var(--status-up-text)" : "var(--status-down-text)",
               border: `1px solid ${
-                health?.status === "UP"
-                  ? "var(--status-up-border)"
-                  : "var(--status-down-border)"
+                health?.status === "UP" ? "var(--status-up-border)" : "var(--status-down-border)"
               }`,
             }}
           >
@@ -163,11 +160,7 @@ export default function IncidentsDashboardPage() {
       </div>
 
       {/* 5+ Filter Bar */}
-      <SearchFilters
-        filters={filters}
-        onChange={handleFilterChange}
-        onReset={handleResetFilters}
-      />
+      <SearchFilters filters={filters} onChange={handleFilterChange} onReset={handleResetFilters} />
 
       {/* Incidents Table */}
       <div
@@ -329,8 +322,7 @@ export default function IncidentsDashboardPage() {
                           inc.assigneeName === "Unassigned"
                             ? "var(--text-muted)"
                             : "var(--text-primary)",
-                        fontStyle:
-                          inc.assigneeName === "Unassigned" ? "italic" : "normal",
+                        fontStyle: inc.assigneeName === "Unassigned" ? "italic" : "normal",
                       }}
                     >
                       {inc.assigneeName}

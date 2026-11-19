@@ -77,7 +77,9 @@ export function Navbar() {
             </span>
           </Link>
 
-          <nav style={{ display: "flex", alignItems: "center", gap: "1.25rem", fontSize: "0.875rem" }}>
+          <nav
+            style={{ display: "flex", alignItems: "center", gap: "1.25rem", fontSize: "0.875rem" }}
+          >
             <Link
               href="/"
               style={{
@@ -150,9 +152,7 @@ export function Navbar() {
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
               <div style={{ textAlign: "right", lineHeight: 1.2 }}>
-                <div style={{ fontSize: "0.8125rem", fontWeight: 600 }}>
-                  {user.fullName}
-                </div>
+                <div style={{ fontSize: "0.8125rem", fontWeight: 600 }}>{user.fullName}</div>
                 <div
                   style={{
                     fontSize: "0.6875rem",

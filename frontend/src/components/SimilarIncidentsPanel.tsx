@@ -98,7 +98,8 @@ export function SimilarIncidentsPanel({ incidentId }: SimilarIncidentsPanelProps
           marginBottom: "1rem",
         }}
       >
-        The following past resolved tickets share vocabulary and root cause characteristics with this incident:
+        The following past resolved tickets share vocabulary and root cause characteristics with
+        this incident:
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -114,9 +115,7 @@ export function SimilarIncidentsPanel({ incidentId }: SimilarIncidentsPanelProps
                 border: `1px solid ${isHighMatch ? "#86efac" : "#dcfce7"}`,
                 borderRadius: "4px",
                 padding: "0.875rem",
-                boxShadow: isHighMatch
-                  ? "0 1px 3px rgba(34, 197, 94, 0.2)"
-                  : "none",
+                boxShadow: isHighMatch ? "0 1px 3px rgba(34, 197, 94, 0.2)" : "none",
               }}
             >
               <div
@@ -174,9 +173,7 @@ export function SimilarIncidentsPanel({ incidentId }: SimilarIncidentsPanelProps
                     marginTop: "0.5rem",
                   }}
                 >
-                  <strong style={{ color: "var(--text-primary)" }}>
-                    Past Resolution:{" "}
-                  </strong>
+                  <strong style={{ color: "var(--text-primary)" }}>Past Resolution: </strong>
                   {item.resolutionSummary}
                 </div>
               )}

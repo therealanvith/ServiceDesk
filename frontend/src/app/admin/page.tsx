@@ -89,15 +89,11 @@ export default function AdminPage() {
 
   const handleToggleSkill = async (tech: TechnicianItem, cat: Category) => {
     const hasSkill = tech.skills.includes(cat);
-    const newSkills = hasSkill
-      ? tech.skills.filter((s) => s !== cat)
-      : [...tech.skills, cat];
+    const newSkills = hasSkill ? tech.skills.filter((s) => s !== cat) : [...tech.skills, cat];
 
     try {
       const updated = await api.updateTechnicianSkills(tech.id, newSkills);
-      setTechnicians((prev) =>
-        prev.map((t) => (t.id === updated.id ? updated : t))
-      );
+      setTechnicians((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update skills");
     }
@@ -135,7 +131,15 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "2rem" }}>
+    <div
+      style={{
+        maxWidth: "900px",
+        margin: "0 auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: "2rem",
+      }}
+    >
       <div>
         <h1
           style={{
@@ -149,7 +153,8 @@ export default function AdminPage() {
           System Administration & Strategy Engine
         </h1>
         <p style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>
-          Dynamically swap GoF Strategy implementations, trigger SLA monitoring, and configure technician rosters.
+          Dynamically swap GoF Strategy implementations, trigger SLA monitoring, and configure
+          technician rosters.
         </p>
       </div>
 
@@ -222,7 +227,14 @@ export default function AdminPage() {
           </span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.25rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            marginBottom: "1.25rem",
+          }}
+        >
           {(["SKILL_MATCH", "LEAST_LOADED", "ROUND_ROBIN"] as const).map((strat) => (
             <label
               key={strat}
@@ -250,7 +262,13 @@ export default function AdminPage() {
                 <strong style={{ fontSize: "0.875rem", color: "var(--text-primary)" }}>
                   {strat}
                 </strong>
-                <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", marginTop: "0.15rem" }}>
+                <p
+                  style={{
+                    fontSize: "0.8125rem",
+                    color: "var(--text-secondary)",
+                    marginTop: "0.15rem",
+                  }}
+                >
                   {STRATEGY_DESCRIPTIONS[strat]}
                 </p>
               </div>
@@ -303,7 +321,8 @@ export default function AdminPage() {
               SLA Deadline Monitoring & Escalation Worker
             </h2>
             <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-              The background daemon automatically runs every 60s. Use this button to trigger immediate evaluation during demo evaluation.
+              The background daemon automatically runs every 60s. Use this button to trigger
+              immediate evaluation during demo evaluation.
             </p>
           </div>
 
@@ -367,7 +386,14 @@ export default function AdminPage() {
           padding: "1.5rem",
         }}
       >
-        <h2 style={{ fontSize: "1.125rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: "0.25rem" }}>
+        <h2
+          style={{
+            fontSize: "1.125rem",
+            fontWeight: 700,
+            color: "var(--text-primary)",
+            marginBottom: "0.25rem",
+          }}
+        >
           Technician Capacity & Skill Category Matrix
         </h2>
         <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
@@ -402,10 +428,14 @@ export default function AdminPage() {
             <tbody>
               {technicians.map((tech) => (
                 <tr key={tech.id} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                  <td style={{ padding: "0.6rem 0.75rem", fontWeight: 600 }}>
-                    {tech.fullName}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-secondary)", fontSize: "0.8125rem" }}>
+                  <td style={{ padding: "0.6rem 0.75rem", fontWeight: 600 }}>{tech.fullName}</td>
+                  <td
+                    style={{
+                      padding: "0.6rem 0.75rem",
+                      color: "var(--text-secondary)",
+                      fontSize: "0.8125rem",
+                    }}
+                  >
                     {tech.email}
                   </td>
                   <td style={{ padding: "0.6rem 0.75rem" }}>

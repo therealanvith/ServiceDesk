@@ -1,16 +1,8 @@
 "use client";
 
-import {
-  PriorityMatrixPreview,
-  calculateMatrixPriority,
-} from "@/components/PriorityMatrixPreview";
+import { PriorityMatrixPreview, calculateMatrixPriority } from "@/components/PriorityMatrixPreview";
 import { useAuth } from "@/context/AuthContext";
-import {
-  type Category,
-  type Impact,
-  type Urgency,
-  api,
-} from "@/lib/apiClient";
+import { type Category, type Impact, type Urgency, api } from "@/lib/apiClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";

@@ -224,13 +224,9 @@ export default function LoginPage() {
             >
               <div>
                 <strong>{p.label}</strong>
-                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-                  {p.role}
-                </div>
+                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{p.role}</div>
               </div>
-              <span style={{ fontSize: "0.75rem", color: "var(--accent)" }}>
-                Select &rarr;
-              </span>
+              <span style={{ fontSize: "0.75rem", color: "var(--accent)" }}>Select &rarr;</span>
             </button>
           ))}
         </div>

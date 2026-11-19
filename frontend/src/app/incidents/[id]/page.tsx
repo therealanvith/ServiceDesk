@@ -8,12 +8,7 @@ import { SlaBadge } from "@/components/SlaBadge";
 import { StateActions } from "@/components/StateActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/context/AuthContext";
-import {
-  type AuditLogItem,
-  type CommentItem,
-  type IncidentDetail,
-  api,
-} from "@/lib/apiClient";
+import { type AuditLogItem, type CommentItem, type IncidentDetail, api } from "@/lib/apiClient";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -189,10 +184,7 @@ export default function IncidentDetailPage() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <PriorityBadge priority={incident.priority} />
             <StatusBadge status={incident.status} />
-            <SlaBadge
-              status={incident.slaWindow?.slaStatus ?? null}
-              isPaused={isPaused}
-            />
+            <SlaBadge status={incident.slaWindow?.slaStatus ?? null} isPaused={isPaused} />
           </div>
         </div>
 
@@ -229,9 +221,7 @@ export default function IncidentDetailPage() {
             >
               Resolution Summary
             </div>
-            <p style={{ fontSize: "0.875rem", color: "#14532d" }}>
-              {incident.resolutionNotes}
-            </p>
+            <p style={{ fontSize: "0.875rem", color: "#14532d" }}>{incident.resolutionNotes}</p>
           </div>
         )}
 
@@ -247,12 +237,8 @@ export default function IncidentDetailPage() {
           }}
         >
           <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>
-              Reporter
-            </span>
-            <strong style={{ color: "var(--text-primary)" }}>
-              {incident.reporter.fullName}
-            </strong>
+            <span style={{ color: "var(--text-muted)", display: "block" }}>Reporter</span>
+            <strong style={{ color: "var(--text-primary)" }}>{incident.reporter.fullName}</strong>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
               {incident.reporter.email}
             </div>
@@ -272,9 +258,7 @@ export default function IncidentDetailPage() {
                 </div>
               </>
             ) : (
-              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
-                Unassigned
-              </span>
+              <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>Unassigned</span>
             )}
           </div>
 
@@ -290,23 +274,18 @@ export default function IncidentDetailPage() {
               }}
             >
               {incident.slaWindow?.resolutionDeadline
-                ? new Date(
-                    incident.slaWindow.resolutionDeadline
-                  ).toLocaleTimeString()
+                ? new Date(incident.slaWindow.resolutionDeadline).toLocaleTimeString()
                 : "N/A"}
             </span>
             {incident.slaWindow && incident.slaWindow.pausedSeconds > 0 && (
               <div style={{ fontSize: "0.75rem", color: "#7c3aed" }}>
-                Paused {Math.round(incident.slaWindow.pausedSeconds / 60)}m in
-                PENDING_INFO
+                Paused {Math.round(incident.slaWindow.pausedSeconds / 60)}m in PENDING_INFO
               </div>
             )}
           </div>
 
           <div>
-            <span style={{ color: "var(--text-muted)", display: "block" }}>
-              Reported At
-            </span>
+            <span style={{ color: "var(--text-muted)", display: "block" }}>Reported At</span>
             <span
               style={{
                 fontFamily: "var(--font-mono)",

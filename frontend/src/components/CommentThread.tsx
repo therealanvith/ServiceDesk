@@ -20,8 +20,7 @@ export function CommentThread({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canPostInternal =
-    currentUserRole === "TECHNICIAN" || currentUserRole === "ADMINISTRATOR";
+  const canPostInternal = currentUserRole === "TECHNICIAN" || currentUserRole === "ADMINISTRATOR";
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
