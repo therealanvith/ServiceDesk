@@ -1,0 +1,54 @@
+# VCS & Git
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Environment & local secrets
+.env*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+
+# Backend build outputs & bytecode
+backend/target/
+**/target/
+*.class
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Frontend dependencies & build outputs
+frontend/node_modules/
+**/node_modules/
+frontend/.next/
+**/.next/
+frontend/out/
+**/out/
+.turbo/
+**/.turbo/
+*.tsbuildinfo
+
+# IDE & Editor configs
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.DS_Store
+Thumbs.db
+
+# Logs & test reports
+*.log
+*.log.*
+logs/
+coverage/
+**/coverage/
+jacoco.exec
+.nyc_output/
+
+# Documentation & repository scripts not required for container runtime
+docs/
+scripts/
+*.md

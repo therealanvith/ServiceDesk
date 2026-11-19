@@ -1,0 +1,37 @@
+# Target build artifacts & bytecode
+target/
+*.class
+*.jar
+
+# Maven wrapper jar if downloaded locally
+.mvn/wrapper/maven-wrapper.jar
+
+# Environment & local secrets
+.env*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+
+# Git & VCS
+.git/
+.gitignore
+.gitattributes
+
+# IDE & Editor files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Test & coverage artifacts
+*.log
+logs/
+coverage/
+jacoco.exec
+
+# Documentation & Markdown
+*.md
