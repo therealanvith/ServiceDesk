@@ -13,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -75,6 +77,12 @@ public class GlobalExceptionHandler {
             .orElse("Validation failed");
 
     return buildResponse(HttpStatus.BAD_REQUEST, detailedMessage, request);
+  }
+
+  @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+  public ResponseEntity<ErrorResponse> handleMalformedRequest(
+      Exception ex, HttpServletRequest request) {
+    return buildResponse(HttpStatus.BAD_REQUEST, "Invalid request body or parameter value", request);
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

@@ -14,6 +14,7 @@ function runGit(args: string[]): string {
   const result = spawnSync("git", args, {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    timeout: 5000,
   });
   if (result.error) {
     console.error(`Failed to execute git ${args.join(" ")}:`, result.error.message);

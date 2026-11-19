@@ -99,7 +99,7 @@ public class IncidentApplicationService {
     this.notificationChannels = notificationChannels;
     this.clock = clock;
     PriorityCalculationStrategy priorityStrategy = new MatrixPriorityStrategy();
-    this.incidentFactory = new IncidentFactory(priorityStrategy, clock);
+    this.incidentFactory = new IncidentFactory(priorityStrategy, clock, incidentJpaRepository::nextIncidentNumber);
     this.eventPublisher = new DomainEventPublisher();
     this.similarityStrategy = new JaccardSimilarityStrategy();
     this.currentAssignmentStrategy = new SkillMatchAssignmentStrategy();
@@ -119,6 +119,9 @@ public class IncidentApplicationService {
             request.impact(),
             request.urgency(),
             reporter.getId());
+
+    // Persist the parent before audit entries and notifications reference it.
+    incidentRepository.save(incident);
 
     // Record creation audit log
     auditLogRepository.save(
@@ -266,6 +269,7 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse provideInfo(
       UUID incidentId, ProvideInfoRequest request, String actorUsername) {
+    getIncidentDetail(incidentId, actorUsername);
     Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
 
@@ -318,6 +322,7 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse closeIncident(
       UUID incidentId, CloseIncidentRequest request, String actorUsername) {
+    getIncidentDetail(incidentId, actorUsername);
     Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
 
@@ -332,6 +337,7 @@ public class IncidentApplicationService {
 
   public IncidentDetailResponse cancelIncident(
       UUID incidentId, CancelIncidentRequest request, String actorUsername) {
+    getIncidentDetail(incidentId, actorUsername);
     Incident incident = loadIncident(incidentId);
     User actor = loadUser(actorUsername);
 
@@ -416,6 +422,10 @@ public class IncidentApplicationService {
       throw new UnauthorizedOperationException("Employees cannot post internal comments");
     }
 
+    if (author.getRole() == Role.EMPLOYEE && !incident.getReporter().getId().equals(author.getId())) {
+      throw new UnauthorizedOperationException("Employees can only comment on their own incidents");
+    }
+
     IncidentCommentEntity comment =
         new IncidentCommentEntity(
             UUID.randomUUID(),
@@ -449,6 +459,7 @@ public class IncidentApplicationService {
 
   @Transactional(readOnly = true)
   public List<CommentResponse> getComments(UUID incidentId, String requesterUsername) {
+    getIncidentDetail(incidentId, requesterUsername);
     User requester = loadUser(requesterUsername);
     boolean isEmployee = requester.getRole() == Role.EMPLOYEE;
 

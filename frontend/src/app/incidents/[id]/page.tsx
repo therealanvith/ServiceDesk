@@ -26,7 +26,7 @@ export default function IncidentDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!incidentId) return;
+    if (!incidentId || !user) return;
     setLoading(true);
     setError(null);
     try {
@@ -36,7 +36,7 @@ export default function IncidentDetailPage() {
       // Load comments & audit logs in parallel
       const [cRes, aRes] = await Promise.allSettled([
         api.getComments(incidentId),
-        api.getAuditLogs(incidentId),
+        user.role === "EMPLOYEE" ? Promise.resolve([]) : api.getAuditLogs(incidentId),
       ]);
 
       if (cRes.status === "fulfilled") setComments(cRes.value);
@@ -46,7 +46,7 @@ export default function IncidentDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [incidentId]);
+  }, [incidentId, user]);
 
   useEffect(() => {
     loadData();
@@ -310,7 +310,7 @@ export default function IncidentDetailPage() {
       />
 
       {/* Intelligent Duplicate & Similar Incident Detection */}
-      <SimilarIncidentsPanel incidentId={incident.id} />
+      {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
 
       {/* Diagnostic Discussion Thread */}
       <CommentThread
@@ -320,7 +320,7 @@ export default function IncidentDetailPage() {
       />
 
       {/* Immutable Audit Ledger Timeline */}
-      <AuditTimeline logs={auditLogs} />
+      {currentUserRole !== "EMPLOYEE" && <AuditTimeline logs={auditLogs} />}
     </div>
   );
 }

@@ -118,6 +118,18 @@ class IncidentControllerTest {
   }
 
   @Test
+  @WithMockUser(username = "employee1", roles = "EMPLOYEE")
+  void malformedRequestsReturnBadRequest() throws Exception {
+    mockMvc.perform(post("/api/v1/incidents").contentType(MediaType.APPLICATION_JSON)
+        .content("{\"category\":\"INVALID\"}"))
+        .andExpect(status().isBadRequest());
+    mockMvc.perform(get("/api/v1/incidents/not-a-uuid"))
+        .andExpect(status().isBadRequest());
+    mockMvc.perform(get("/api/v1/incidents?status=INVALID"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   @WithMockUser(username = "tech_lead", roles = {"TECHNICIAN"})
   @DisplayName("GET /api/v1/incidents returns paged list")
   void testListIncidents() throws Exception {

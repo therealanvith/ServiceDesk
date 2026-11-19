@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 /**
  * Creational Factory ensuring consistent instantiation of valid Incident aggregates.
@@ -18,7 +19,7 @@ public class IncidentFactory {
 
   private final PriorityCalculationStrategy priorityStrategy;
   private final Clock clock;
-  private final AtomicLong ticketSequence;
+  private final LongSupplier ticketSequence;
 
   public IncidentFactory() {
     this(new MatrixPriorityStrategy(), Clock.systemUTC(), 1000L);
@@ -32,10 +33,15 @@ public class IncidentFactory {
       PriorityCalculationStrategy priorityStrategy,
       Clock clock,
       long initialSequence) {
+    this(priorityStrategy, clock, new AtomicLong(initialSequence)::incrementAndGet);
+  }
+
+  public IncidentFactory(
+      PriorityCalculationStrategy priorityStrategy, Clock clock, LongSupplier ticketSequence) {
     this.priorityStrategy =
         priorityStrategy != null ? priorityStrategy : new MatrixPriorityStrategy();
     this.clock = clock != null ? clock : Clock.systemUTC();
-    this.ticketSequence = new AtomicLong(initialSequence);
+    this.ticketSequence = Objects.requireNonNull(ticketSequence);
   }
 
   public Incident createIncident(
@@ -53,7 +59,7 @@ public class IncidentFactory {
     Objects.requireNonNull(reporterId, "Reporter ID must not be null");
 
     IncidentId incidentId = IncidentId.generate();
-    String incidentNumber = "INC-" + ticketSequence.incrementAndGet();
+    String incidentNumber = "INC-" + ticketSequence.getAsLong();
     Priority priority = priorityStrategy.calculatePriority(impact, urgency);
     Instant now = clock.instant();
     SlaWindow slaWindow = SlaWindow.calculateInitial(priority, now);

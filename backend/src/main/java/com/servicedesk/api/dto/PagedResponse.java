@@ -15,8 +15,8 @@ public record PagedResponse<T>(
     int totalElements = allItems.size();
     int totalPages = (int) Math.ceil((double) totalElements / safeSize);
 
-    int fromIndex = Math.min(safePage * safeSize, totalElements);
-    int toIndex = Math.min(fromIndex + safeSize, totalElements);
+    int fromIndex = (int) Math.min((long) safePage * safeSize, totalElements);
+    int toIndex = (int) Math.min((long) fromIndex + safeSize, totalElements);
     List<T> pageContent = allItems.subList(fromIndex, toIndex);
 
     return new PagedResponse<>(pageContent, safePage, safeSize, totalElements, totalPages);

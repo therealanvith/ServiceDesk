@@ -31,3 +31,13 @@ INSERT INTO user_skills (id, user_id, category) VALUES
 ('a1111111-0000-0000-0000-000000000005', '44444444-4444-4444-4444-444444444444', 'SOFTWARE'),
 ('a1111111-0000-0000-0000-000000000006', '44444444-4444-4444-4444-444444444444', 'ACCESS')
 ON CONFLICT (id) DO NOTHING;
+
+-- 3. Ensure sequence exists for persistent incident numbers
+CREATE SEQUENCE IF NOT EXISTS incident_number_seq START WITH 1001;
+SELECT setval(
+    'incident_number_seq',
+    GREATEST(1000, COALESCE(
+        (SELECT MAX(SUBSTRING(incident_number FROM 5)::BIGINT)
+         FROM incidents WHERE incident_number ~ '^INC-[0-9]+$'), 1000)),
+    true
+);
