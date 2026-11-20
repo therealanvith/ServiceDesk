@@ -4,7 +4,15 @@ import com.servicedesk.api.dto.ReportResponse;
 import com.servicedesk.api.dto.ReportResponse.Overview;
 import com.servicedesk.api.dto.ReportResponse.ServiceLoad;
 import com.servicedesk.api.dto.ReportResponse.TechnicianLoad;
+import com.servicedesk.api.dto.TrendsResponse;
+import com.servicedesk.api.dto.TrendsResponse.CategoryResolution;
+import com.servicedesk.api.dto.TrendsResponse.DailyPoint;
+import com.servicedesk.api.dto.TrendsResponse.EscalationCount;
+import com.servicedesk.api.dto.TrendsResponse.SelfHelp;
+import com.servicedesk.api.dto.TrendsResponse.WeeklyCompliance;
 import com.servicedesk.api.dto.WorkloadResponse;
+import com.servicedesk.domain.audit.AuditAction;
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import com.servicedesk.domain.incident.Incident;
@@ -14,16 +22,27 @@ import com.servicedesk.domain.repository.IncidentRepository;
 import com.servicedesk.domain.repository.UserRepository;
 import com.servicedesk.domain.sla.SlaStatus;
 import com.servicedesk.domain.user.User;
+import com.servicedesk.infrastructure.persistence.entity.IncidentAuditLogEntity;
+import com.servicedesk.infrastructure.persistence.entity.SelfHelpFeedbackEntity;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataAuditLogJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataItServiceJpaRepository;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataSelfHelpFeedbackJpaRepository;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -44,27 +63,33 @@ public class ReportApplicationService {
 
   private static final int CORRELATION_THRESHOLD = 2;
 
+  /** The trend ranges the reports page offers. */
+  private static final Set<Integer> TREND_RANGES = Set.of(7, 30, 90);
+
   private final IncidentRepository incidents;
   private final UserRepository users;
   private final SpringDataItServiceJpaRepository services;
+  private final SpringDataAuditLogJpaRepository auditLogs;
+  private final SpringDataSelfHelpFeedbackJpaRepository selfHelpFeedback;
   private final Clock clock;
 
   public ReportApplicationService(
       IncidentRepository incidents,
       UserRepository users,
       SpringDataItServiceJpaRepository services,
+      SpringDataAuditLogJpaRepository auditLogs,
+      SpringDataSelfHelpFeedbackJpaRepository selfHelpFeedback,
       Clock clock) {
     this.incidents = incidents;
     this.users = users;
     this.services = services;
+    this.auditLogs = auditLogs;
+    this.selfHelpFeedback = selfHelpFeedback;
     this.clock = clock;
   }
 
   public ReportResponse overview(String requesterUsername) {
-    User requester = loadUser(requesterUsername);
-    if (!requester.getRole().hasAdminRights()) {
-      throw new UnauthorizedOperationException("Only an administrator can view reports");
-    }
+    requireAdmin(requesterUsername);
 
     Instant now = clock.instant();
     List<Incident> all = incidents.findAll();
@@ -148,6 +173,109 @@ public class ReportApplicationService {
         correlated);
   }
 
+  /**
+   * Daily volume, weekly resolution-SLA compliance, resolve time by category, first response,
+   * escalations and self-help answers over the last {@code days} UTC days, today included.
+   */
+  public TrendsResponse trends(int days, String requesterUsername) {
+    requireAdmin(requesterUsername);
+    if (!TREND_RANGES.contains(days)) {
+      throw new IllegalArgumentException("Trends cover 7, 30 or 90 days");
+    }
+
+    LocalDate to = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
+    LocalDate from = to.minusDays(days - 1L);
+    Instant since = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+
+    List<Incident> all = incidents.findAll();
+    List<Incident> created = all.stream().filter(i -> onOrAfter(i.getCreatedAt(), since)).toList();
+    List<Incident> resolved =
+        all.stream().filter(i -> onOrAfter(i.getResolvedAt(), since)).toList();
+
+    Map<LocalDate, Long> createdPerDay = countByDay(created, Incident::getCreatedAt);
+    Map<LocalDate, Long> resolvedPerDay = countByDay(resolved, Incident::getResolvedAt);
+    List<DailyPoint> daily =
+        from.datesUntil(to.plusDays(1))
+            .map(
+                day ->
+                    new DailyPoint(
+                        day,
+                        createdPerDay.getOrDefault(day, 0L),
+                        resolvedPerDay.getOrDefault(day, 0L)))
+            .toList();
+
+    // Measured against the resolution deadline, which a pause for missing info pushes back.
+    Map<LocalDate, List<Incident>> resolvedPerWeek =
+        resolved.stream().collect(Collectors.groupingBy(i -> weekStart(i.getResolvedAt())));
+    List<WeeklyCompliance> weekly = new ArrayList<>();
+    for (LocalDate week = weekStart(since); !week.isAfter(to); week = week.plusWeeks(1)) {
+      List<Incident> inWeek = resolvedPerWeek.getOrDefault(week, List.of());
+      long within =
+          inWeek.stream()
+              .filter(i -> i.getSlaWindow() != null)
+              .filter(i -> !i.getResolvedAt().isAfter(i.getSlaWindow().getResolutionDeadline()))
+              .count();
+      weekly.add(
+          new WeeklyCompliance(
+              week,
+              inWeek.size(),
+              within,
+              inWeek.isEmpty() ? null : round1(100.0 * within / inWeek.size())));
+    }
+
+    // Wall-clock hours from report to resolve, so time spent waiting on the reporter counts too.
+    List<CategoryResolution> byCategory =
+        resolved.stream()
+            .collect(Collectors.groupingBy(i -> i.getCategory().name()))
+            .entrySet()
+            .stream()
+            .map(
+                e ->
+                    new CategoryResolution(
+                        e.getKey(),
+                        e.getValue().size(),
+                        round1(averageMinutes(e.getValue(), Incident::getResolvedAt) / 60.0)))
+            .sorted(
+                Comparator.comparingDouble(CategoryResolution::meanHours)
+                    .reversed()
+                    .thenComparing(CategoryResolution::category))
+            .toList();
+
+    List<Incident> responded = created.stream().filter(i -> i.getRespondedAt() != null).toList();
+    Double firstResponseMinutes =
+        responded.isEmpty() ? null : round1(averageMinutes(responded, Incident::getRespondedAt));
+
+    Map<String, Long> escalated =
+        auditLogs
+            .findByActionAndCreatedAtGreaterThanEqual(AuditAction.ESCALATED.name(), since)
+            .stream()
+            .filter(entry -> entry.getNewValue() != null)
+            .collect(
+                Collectors.groupingBy(IncidentAuditLogEntity::getNewValue, Collectors.counting()));
+    List<EscalationCount> escalations =
+        Arrays.stream(EscalationLevel.values())
+            .filter(level -> level != EscalationLevel.NONE)
+            .map(
+                level ->
+                    new EscalationCount(level.name(), escalated.getOrDefault(level.name(), 0L)))
+            .toList();
+
+    List<SelfHelpFeedbackEntity> answers = selfHelpFeedback.findByCreatedAtGreaterThanEqual(since);
+    long helped = answers.stream().filter(SelfHelpFeedbackEntity::isHelped).count();
+
+    return new TrendsResponse(
+        days,
+        from,
+        to,
+        daily,
+        weekly,
+        byCategory,
+        firstResponseMinutes,
+        responded.size(),
+        escalations,
+        new SelfHelp(helped, answers.size() - helped));
+  }
+
   /** A technician's own queue summary. */
   public WorkloadResponse myWorkload(String requesterUsername) {
     User me = loadUser(requesterUsername);
@@ -219,6 +347,32 @@ public class ReportApplicationService {
         .collect(Collectors.groupingBy(key, LinkedHashMap::new, Collectors.counting()));
   }
 
+  private static Map<LocalDate, Long> countByDay(
+      List<Incident> list, Function<Incident, Instant> when) {
+    return list.stream()
+        .collect(
+            Collectors.groupingBy(
+                i -> LocalDate.ofInstant(when.apply(i), ZoneOffset.UTC), Collectors.counting()));
+  }
+
+  /** Mean minutes from each ticket's report to the given moment. */
+  private static double averageMinutes(List<Incident> list, Function<Incident, Instant> until) {
+    return list.stream()
+            .mapToLong(i -> Duration.between(i.getCreatedAt(), until.apply(i)).toSeconds())
+            .average()
+            .orElse(0)
+        / 60.0;
+  }
+
+  private static boolean onOrAfter(Instant when, Instant since) {
+    return when != null && !when.isBefore(since);
+  }
+
+  private static LocalDate weekStart(Instant when) {
+    return LocalDate.ofInstant(when, ZoneOffset.UTC)
+        .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+  }
+
   private static boolean isOpen(IncidentStatus status) {
     return status.isActive() && status != IncidentStatus.RESOLVED;
   }
@@ -229,6 +383,12 @@ public class ReportApplicationService {
 
   private static double round1(double value) {
     return Math.round(value * 10.0) / 10.0;
+  }
+
+  private void requireAdmin(String username) {
+    if (!loadUser(username).getRole().hasAdminRights()) {
+      throw new UnauthorizedOperationException("Only an administrator can view reports");
+    }
   }
 
   private User loadUser(String username) {

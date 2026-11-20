@@ -341,6 +341,27 @@ export interface Workload {
   resolvedThisWeek: number;
 }
 
+export type TrendRange = 7 | 30 | 90;
+
+/** Trends over the last 7, 30 or 90 UTC days; dates are ISO yyyy-mm-dd. */
+export interface Trends {
+  days: TrendRange;
+  from: string;
+  to: string;
+  daily: { date: string; created: number; resolved: number }[];
+  weeklyCompliance: {
+    weekStart: string;
+    resolvedCount: number;
+    withinSlaCount: number;
+    compliancePercent: number | null;
+  }[];
+  resolutionByCategory: { category: Category; resolvedCount: number; meanHours: number }[];
+  averageFirstResponseMinutes: number | null;
+  respondedCount: number;
+  escalationsByLevel: { level: Exclude<EscalationLevel, "NONE">; count: number }[];
+  selfHelp: { helped: number; notHelped: number };
+}
+
 export interface AssignmentConfig {
   activeStrategy: string;
 }
@@ -631,6 +652,7 @@ export const api = {
   // Reports
   getReport: () => apiClient<Report>("/reports/overview"),
   getMyWorkload: () => apiClient<Workload>("/reports/my-workload"),
+  getTrends: (days: TrendRange) => apiClient<Trends>(`/reports/trends?days=${days}`),
 
   // Notifications
   getNotifications: () => apiClient<NotificationInbox>("/notifications"),

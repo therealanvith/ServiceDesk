@@ -1854,6 +1854,227 @@ li.is-inactive {
   white-space: nowrap;
 }
 
+/* ---------- Trend charts ---------- */
+
+/* Series colours, checked for colour-blind separation and 3:1 contrast on each surface. */
+:root {
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+  }
+}
+
+:root[data-theme="dark"] {
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+}
+
+.trends {
+  margin-top: 24px;
+}
+
+.trends-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+
+.trends-header h2 {
+  font-size: 16px;
+}
+
+.trends-header p {
+  font-size: 12px;
+}
+
+.range-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 0;
+  margin-bottom: 12px;
+}
+
+.range-control .btn[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+.trends .callout {
+  margin-bottom: 12px;
+}
+
+.trends-body {
+  transition: opacity 0.15s;
+}
+
+.trends-body.is-refetching {
+  opacity: 0.55;
+}
+
+.stat-tile .stat-detail {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 16px;
+}
+
+.chart-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-card .chart-title {
+  font-size: 14px;
+}
+
+.chart-body {
+  padding: 12px 16px 14px;
+}
+
+.chart-table {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.chart-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  list-style: none;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.chart-legend li,
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.chart-plot {
+  position: relative;
+  border-radius: var(--radius);
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;
+}
+
+.chart-gridline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-baseline {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.chart-crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-end-label,
+.chart-category,
+.chart-value {
+  fill: var(--ink-2);
+  font-size: 12px;
+}
+
+.chart-value {
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* The surface-coloured ring keeps dots legible where they sit on a line. */
+.chart-dot {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-hit {
+  fill: transparent;
+}
+
+.chart-bar-row.is-active .chart-bar {
+  opacity: 0.8;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.tooltip-title {
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+
+.tooltip-row strong {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trends-body {
+    transition: none;
+  }
+}
+
 /* ---------- Audit log ---------- */
 
 .audit-remark {
