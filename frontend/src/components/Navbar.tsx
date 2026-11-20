@@ -6,7 +6,7 @@ import { ROLE_LABELS, isAdmin } from "@/lib/labels";
 import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -53,15 +53,16 @@ export function Navbar() {
         { href: "/issues", label: "All issues" },
         { href: "/status", label: "Service status" },
         { href: "/incidents/new", label: "Report an issue" },
-        ...(isAdmin(user.role)
-          ? [
-              { href: "/reports", label: "Reports" },
-              { href: "/audit", label: "Audit log" },
-              { href: "/admin/users", label: "Users" },
-              { href: "/admin", label: "Settings" },
-            ]
-          : []),
       ];
+  const adminLinks =
+    user && isAdmin(user.role)
+      ? [
+          { href: "/reports", label: "Reports" },
+          { href: "/audit", label: "Audit log" },
+          { href: "/admin/users", label: "Users" },
+          { href: "/admin", label: "Settings" },
+        ]
+      : [];
 
   const isActive = (href: string) =>
     href === "/"
@@ -86,6 +87,9 @@ export function Navbar() {
             </Link>
           ))}
         </nav>
+        {adminLinks.length > 0 && (
+          <AdminMenu links={adminLinks} pathname={pathname} isActive={isActive} />
+        )}
         <div className="topbar-end">
           {user && (
             <Link
@@ -123,5 +127,77 @@ export function Navbar() {
         </div>
       </div>
     </header>
+  );
+}
+
+/** The administrator pages, behind one button so the top bar stays on a single line. */
+function AdminMenu({
+  links,
+  pathname,
+  isActive,
+}: {
+  links: { href: string; label: string }[];
+  pathname: string;
+  isActive: (href: string) => boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const current = links.find((link) => isActive(link.href));
+
+  // Close after navigating, on a click elsewhere, or on Escape (returning focus to the button).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes whenever the page changes
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="admin-menu" ref={wrapRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="nav-link admin-menu-button"
+        aria-expanded={open}
+        aria-controls="admin-menu-list"
+        data-current={current ? "true" : undefined}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {current ? current.label : "Admin"}
+        <span aria-hidden="true" className="admin-menu-caret">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <ul className="admin-menu-list" id="admin-menu-list">
+          {links.map((link) => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="admin-menu-item"
+                aria-current={isActive(link.href) ? "page" : undefined}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

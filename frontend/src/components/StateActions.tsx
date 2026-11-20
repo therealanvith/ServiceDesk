@@ -29,6 +29,8 @@ type DialogKind =
   | "override"
   | "close";
 
+/** Mirrors ClosedState.REOPEN_WINDOW on the server. */
+const REOPEN_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 export function StateActions({
   incident,
   currentUserRole,
@@ -160,6 +162,15 @@ export function StateActions({
     );
     secondary.push(btn("reopen", "It’s still not fixed", () => open("reopen")));
   }
+  // A closed ticket can still be reopened for two weeks if the fix didn't hold.
+  if (
+    status === "CLOSED" &&
+    (isReporter || isAdmin) &&
+    incident.closedAt &&
+    Date.now() - new Date(incident.closedAt).getTime() < REOPEN_WINDOW_MS
+  ) {
+    secondary.push(btn("reopen", "It’s still not fixed", () => open("reopen")));
+  }
   if (
     (status === "ASSIGNED" || status === "ACKNOWLEDGED" || status === "IN_PROGRESS") &&
     isTechOrAdmin
@@ -197,9 +208,8 @@ export function StateActions({
           {error}
         </p>
       )}
-      {note ? (
-        <p className="actions-note">{note}</p>
-      ) : (
+      {note && <p className="actions-note">{note}</p>}
+      {primary.length + secondary.length > 0 && (
         <div className="actions">
           {primary}
           {secondary}
@@ -213,7 +223,10 @@ export function StateActions({
           title="Confirm the fix"
           onClose={() => setDialog(null)}
         >
-          <p>Closing confirms the problem is solved. Tickets can’t be reopened after closing.</p>
+          <p>
+            Closing confirms the problem is solved. If it comes back within 14 days, you can reopen
+            the ticket.
+          </p>
           {isReporter && (
             <fieldset className="field rating">
               <legend>How was the support? (optional)</legend>

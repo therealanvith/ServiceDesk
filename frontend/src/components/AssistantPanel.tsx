@@ -9,8 +9,11 @@ import { useState } from "react";
 export function AssistantPanel({
   incidentId,
   onUseAsResolution,
+  canSuggestFix = true,
 }: {
   incidentId: string;
+  /** False once the ticket is resolved, closed or cancelled: there is nothing left to fix. */
+  canSuggestFix?: boolean;
   /** Present when the viewer can resolve the ticket now. */
   onUseAsResolution?: (text: string) => void;
 }) {
@@ -50,14 +53,16 @@ export function AssistantPanel({
         >
           {busy === "summary" ? "Summarising…" : `Summarise${waitLabel}`}
         </button>
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={disabled}
-          onClick={() => run("fix", () => api.suggestFix(incidentId), setFix)}
-        >
-          {busy === "fix" ? "Thinking…" : `Suggest a fix${waitLabel}`}
-        </button>
+        {canSuggestFix && (
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={disabled}
+            onClick={() => run("fix", () => api.suggestFix(incidentId), setFix)}
+          >
+            {busy === "fix" ? "Thinking…" : `Suggest a fix${waitLabel}`}
+          </button>
+        )}
       </div>
       {error && (
         <p className="field-hint" role="alert">

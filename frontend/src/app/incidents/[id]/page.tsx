@@ -279,6 +279,7 @@ export default function IncidentDetailPage() {
           {currentUserRole !== "EMPLOYEE" && (
             <AssistantPanel
               incidentId={incident.id}
+              canSuggestFix={!["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status)}
               onUseAsResolution={
                 incident.status === "IN_PROGRESS" &&
                 (isAdmin(currentUserRole) || incident.assignee?.id === user?.id)
@@ -321,21 +322,44 @@ export default function IncidentDetailPage() {
               </dd>
               <dt>SLA</dt>
               <dd>
-                <SlaBadge status={sla?.slaStatus ?? null} isPaused={isPaused} />
+                <SlaBadge
+                  status={incident.status === "CANCELLED" ? null : (sla?.slaStatus ?? null)}
+                  isPaused={isPaused}
+                  finished={incident.status === "RESOLVED" || incident.status === "CLOSED"}
+                />
                 {sla && sla.pausedSeconds > 0 && (
                   <span className="props-sub">
-                    Paused {Math.round(sla.pausedSeconds / 60)} min so far
+                    Paused {Math.round(sla.pausedSeconds / 60)} min
+                    {incident.resolvedAt ? " in total" : " so far"}
                   </span>
                 )}
               </dd>
-              <dt>Due</dt>
-              <dd>
-                {sla?.resolutionDeadline ? (
-                  formatDateTime(sla.resolutionDeadline)
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </dd>
+              {incident.resolvedAt ? (
+                <>
+                  <dt>Resolved</dt>
+                  <dd>
+                    {formatDateTime(incident.resolvedAt)}
+                    {sla?.resolutionDeadline && (
+                      <span className="props-sub">
+                        {new Date(incident.resolvedAt) <= new Date(sla.resolutionDeadline)
+                          ? "Within target"
+                          : "After target"}
+                      </span>
+                    )}
+                  </dd>
+                </>
+              ) : (
+                <>
+                  <dt>Due</dt>
+                  <dd>
+                    {sla?.resolutionDeadline ? (
+                      formatDateTime(sla.resolutionDeadline)
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </dd>
+                </>
+              )}
               <dt>Response</dt>
               <dd>
                 {incident.respondedAt ? (

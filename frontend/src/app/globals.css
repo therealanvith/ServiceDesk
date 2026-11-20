@@ -2622,7 +2622,7 @@ li.is-inactive {
 /* Technician board: one column per lifecycle stage, scrolling sideways on narrow screens. */
 .board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(240px, 1fr));
+  grid-template-columns: repeat(5, minmax(190px, 1fr));
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 8px;
@@ -2853,4 +2853,73 @@ kbd {
   .board-card.is-dragged {
     transform: none;
   }
+}
+
+/* Finished tickets: whether the target was met, without alarming colours. */
+.sla-met {
+  color: var(--muted);
+}
+
+.sla-missed {
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* Administrator pages behind one menu in the top bar. */
+.admin-menu {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+  /* Sits right after the nav links: undo the top bar's wider gap (24px) down to theirs (4px). */
+  margin-left: -20px;
+}
+
+.admin-menu-button {
+  gap: 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-menu-button[data-current="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+.admin-menu-caret {
+  font-size: 10px;
+}
+
+.admin-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 180px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+}
+
+.admin-menu-item {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--ink);
+}
+
+.admin-menu-item:hover,
+.admin-menu-item:focus-visible {
+  background: var(--hover);
+}
+
+.admin-menu-item[aria-current="page"] {
+  font-weight: 600;
 }

@@ -111,6 +111,8 @@ export interface IncidentDetail {
   respondedAt: string | null;
   escalatedAt: string | null;
   escalationLevel: EscalationLevel;
+  resolvedAt: string | null;
+  closedAt: string | null;
   feedbackRating: number | null;
   feedbackComment: string | null;
   /** The major incident this ticket is part of, if any. */

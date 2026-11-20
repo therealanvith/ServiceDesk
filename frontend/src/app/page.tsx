@@ -408,8 +408,9 @@ export default function IncidentsDashboardPage() {
                         )}
                         <td className="hide-sm">
                           <SlaBadge
-                            status={ticket.slaStatus}
+                            status={ticket.status === "CANCELLED" ? null : ticket.slaStatus}
                             isPaused={ticket.status === "PENDING_INFO"}
+                            finished={ticket.status === "RESOLVED" || ticket.status === "CLOSED"}
                           />
                         </td>
                         <td className="hide-sm col-nowrap muted">

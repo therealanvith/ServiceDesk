@@ -361,7 +361,11 @@ function BoardCard({
         {ticket.title}
       </Link>
       <div className="board-card-meta">
-        <SlaBadge status={ticket.slaStatus} isPaused={ticket.status === "PENDING_INFO"} />
+        <SlaBadge
+          status={ticket.slaStatus}
+          isPaused={ticket.status === "PENDING_INFO"}
+          finished={ticket.status === "RESOLVED"}
+        />
         {showAssignee && (
           <span className="muted board-card-assignee">
             {ticket.assigneeName === "Unassigned" ? (
