@@ -1,9 +1,10 @@
 "use client";
 
-import { Icon } from "@/components/Icon";
+import { showToast } from "@/components/LiveUpdates";
+import { Modal, TEXT_DIALOGS, TransitionDialog } from "@/components/TransitionDialog";
 import { type IncidentDetail, type Priority, type TechnicianItem, api } from "@/lib/apiClient";
 import { CATEGORY_LABELS, PRIORITY_LABELS } from "@/lib/labels";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 interface StateActionsProps {
   incident: IncidentDetail;
@@ -26,52 +27,6 @@ type DialogKind =
   | "cancel"
   | "override"
   | "close";
-
-interface TextDialog {
-  title: string;
-  description: string;
-  label: string;
-  placeholder: string;
-  confirm: string;
-  danger?: boolean;
-  submit: (incidentId: string, text: string) => Promise<IncidentDetail>;
-}
-
-const TEXT_DIALOGS: Record<"requestInfo" | "provideInfo" | "resolve" | "cancel", TextDialog> = {
-  requestInfo: {
-    title: "Ask the reporter for details",
-    description: "The SLA clock pauses until they reply.",
-    label: "Question",
-    placeholder: "What do you need to know?",
-    confirm: "Send question",
-    submit: (id, text) => api.requestInfo(id, text),
-  },
-  provideInfo: {
-    title: "Reply to the technician",
-    description: "Work resumes as soon as you send this.",
-    label: "Your reply",
-    placeholder: "Answer the technician's question.",
-    confirm: "Send reply",
-    submit: (id, text) => api.provideInfo(id, text),
-  },
-  resolve: {
-    title: "Resolve ticket",
-    description: "The reporter will be asked to confirm the fix.",
-    label: "What fixed it?",
-    placeholder: "Describe the cause and the fix.",
-    confirm: "Mark resolved",
-    submit: (id, text) => api.resolveIncident(id, text),
-  },
-  cancel: {
-    title: "Cancel ticket",
-    description: "Cancelled tickets can’t be reopened.",
-    label: "Reason",
-    placeholder: "Why is this ticket being cancelled?",
-    confirm: "Cancel ticket",
-    danger: true,
-    submit: (id, text) => api.cancelIncident(id, text),
-  },
-};
 
 export function StateActions({
   incident,
@@ -125,13 +80,14 @@ export function StateActions({
     }
   }, [dialogRequest]);
 
-  const handleAction = async (actionFn: () => Promise<IncidentDetail>) => {
+  const handleAction = async (actionFn: () => Promise<IncidentDetail>, done: string) => {
     setLoading(true);
     setError(null);
     try {
       const updated = await actionFn();
       setDialog(null);
       onUpdate(updated);
+      showToast({ title: done, tone: "success" });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Action failed");
     } finally {
@@ -162,12 +118,14 @@ export function StateActions({
       btn(
         "acknowledge",
         "Acknowledge",
-        () => handleAction(() => api.acknowledge(incident.id)),
+        () => handleAction(() => api.acknowledge(incident.id), "Ticket acknowledged"),
         "btn-primary"
       )
     );
     secondary.push(
-      btn("start", "Start work", () => handleAction(() => api.startWork(incident.id)))
+      btn("start", "Start work", () =>
+        handleAction(() => api.startWork(incident.id), "Work started")
+      )
     );
   }
   if (status === "ACKNOWLEDGED" && canWork) {
@@ -175,7 +133,7 @@ export function StateActions({
       btn(
         "start",
         "Start work",
-        () => handleAction(() => api.startWork(incident.id)),
+        () => handleAction(() => api.startWork(incident.id), "Work started"),
         "btn-primary"
       )
     );
@@ -216,8 +174,7 @@ export function StateActions({
     secondary.push(btn("cancel", "Cancel ticket", () => open("cancel"), "btn-danger"));
   }
 
-  const textDialog =
-    dialog && dialog in TEXT_DIALOGS ? TEXT_DIALOGS[dialog as keyof typeof TEXT_DIALOGS] : null;
+  const textKind = dialog && dialog in TEXT_DIALOGS ? (dialog as keyof typeof TEXT_DIALOGS) : null;
 
   let note: string | null = null;
   if (terminal) {
@@ -292,11 +249,13 @@ export function StateActions({
               type="button"
               className="btn btn-primary"
               onClick={() =>
-                handleAction(() =>
-                  api.closeIncident(incident.id, {
-                    rating: isReporter && rating ? rating : undefined,
-                    remarks: text.trim() || undefined,
-                  })
+                handleAction(
+                  () =>
+                    api.closeIncident(incident.id, {
+                      rating: isReporter && rating ? rating : undefined,
+                      remarks: text.trim() || undefined,
+                    }),
+                  "Ticket closed"
                 )
               }
             >
@@ -346,7 +305,10 @@ export function StateActions({
               type="button"
               className="btn btn-primary"
               onClick={() =>
-                handleAction(() => api.assignIncident(incident.id, selectedTechId || undefined))
+                handleAction(
+                  () => api.assignIncident(incident.id, selectedTechId || undefined),
+                  "Ticket assigned"
+                )
               }
             >
               Assign
@@ -394,7 +356,10 @@ export function StateActions({
               className="btn btn-primary"
               disabled={!text.trim()}
               onClick={() =>
-                handleAction(() => api.overridePriority(incident.id, overridePriority, text.trim()))
+                handleAction(
+                  () => api.overridePriority(incident.id, overridePriority, text.trim()),
+                  "Priority changed"
+                )
               }
             >
               Change priority
@@ -403,111 +368,22 @@ export function StateActions({
         </Modal>
       )}
 
-      {textDialog && (
-        <Modal
-          error={dialog ? error : null}
+      {textKind && (
+        <TransitionDialog
+          kind={textKind}
+          text={text}
+          onTextChange={setText}
           busy={loading}
-          title={textDialog.title}
+          error={dialog ? error : null}
           onClose={() => setDialog(null)}
-        >
-          <p>{textDialog.description}</p>
-          <label className="field">
-            {textDialog.label}
-            <textarea
-              rows={4}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={textDialog.placeholder}
-            />
-          </label>
-          <div className="row-end">
-            <button type="button" className="btn" onClick={() => setDialog(null)}>
-              Back
-            </button>
-            <button
-              type="button"
-              className={`btn ${textDialog.danger ? "btn-danger" : "btn-primary"}`}
-              disabled={!text.trim()}
-              onClick={() => handleAction(() => textDialog.submit(incident.id, text.trim()))}
-            >
-              {textDialog.confirm}
-            </button>
-          </div>
-        </Modal>
+          onSubmit={(value) =>
+            handleAction(
+              () => TEXT_DIALOGS[textKind].submit(incident.id, value),
+              TEXT_DIALOGS[textKind].done
+            )
+          }
+        />
       )}
     </section>
-  );
-}
-
-function Modal({
-  title,
-  onClose,
-  children,
-  error,
-  busy,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-  error?: string | null;
-  busy?: boolean;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    const opener = document.activeElement as HTMLElement | null;
-    // showModal() makes the rest of the page inert and traps focus inside the dialog.
-    if (!dialog.open) dialog.showModal();
-    dialog.querySelector<HTMLElement>("textarea, select, input, button:not(.icon-btn)")?.focus();
-    const onCancel = (e: Event) => {
-      e.preventDefault();
-      closeRef.current();
-    };
-    dialog.addEventListener("cancel", onCancel);
-    return () => {
-      dialog.removeEventListener("cancel", onCancel);
-      if (dialog.open) dialog.close();
-      opener?.focus();
-    };
-  }, []);
-
-  return (
-    <dialog
-      ref={ref}
-      className="modal"
-      aria-labelledby="modal-title"
-      aria-busy={busy || undefined}
-      onMouseDown={(e) => {
-        // A click on the backdrop (outside the dialog box) closes it.
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
-    >
-      <div className="modal-header">
-        <h2 id="modal-title">{title}</h2>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={onClose}
-          aria-label="Close"
-          disabled={busy}
-        >
-          <Icon name="close" size={16} />
-        </button>
-      </div>
-      <div className="modal-body">
-        {error && (
-          <p className="alert" role="alert">
-            {error}
-          </p>
-        )}
-        <fieldset className="modal-fields" disabled={busy}>
-          {children}
-        </fieldset>
-      </div>
-    </dialog>
   );
 }
