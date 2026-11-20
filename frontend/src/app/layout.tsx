@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { LiveUpdates } from "@/components/LiveUpdates";
 import { Navbar } from "@/components/Navbar";
 import { themeInitScript } from "@/components/ThemeToggle";
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             {children}
           </main>
           <LiveUpdates />
+          <KeyboardShortcuts />
         </AuthProvider>
       </body>
     </html>
