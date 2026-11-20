@@ -19,7 +19,9 @@ export default function UsersPage() {
   const [accounts, setAccounts] = useState<UserAccount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  // Accounts with an update in flight; each stays locked until its own request settles.
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [loadFailed, setLoadFailed] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
@@ -31,10 +33,14 @@ export default function UsersPage() {
     : ["EMPLOYEE", "TECHNICIAN"];
 
   const load = useCallback(() => {
+    setLoadFailed(false);
     api
       .listUsers()
       .then(setAccounts)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => {
+        setError(err.message);
+        setLoadFailed(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -47,7 +53,7 @@ export default function UsersPage() {
     (isRoot || !isAdmin(account.role));
 
   const run = async (id: string, action: () => Promise<UserAccount>, done: string) => {
-    setBusyId(id);
+    setBusyIds((prev) => new Set(prev).add(id));
     setError(null);
     setMessage(null);
     try {
@@ -57,7 +63,11 @@ export default function UsersPage() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
-      setBusyId(null);
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -75,8 +85,11 @@ export default function UsersPage() {
         password: form.password,
       });
       setForm(EMPTY_FORM);
-      setMessage(`Created ${created.username}. Share the temporary password with them directly.`);
-      load();
+      setMessage(
+        `Created ${created.username}. Share the temporary password with them directly; they'll be asked to change it.`
+      );
+      // Add the new row in place rather than reloading, so in-flight edits to others survive.
+      setAccounts((list) => (list ? [...list, created] : [created]));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Couldn't create the account");
     } finally {
@@ -137,7 +150,14 @@ export default function UsersPage() {
             />
           </label>
         </div>
-        {!accounts ? (
+        {loadFailed ? (
+          <div className="empty" role="alert">
+            <h2>Couldn’t load people</h2>
+            <button type="button" className="btn" onClick={load}>
+              Try again
+            </button>
+          </div>
+        ) : !accounts ? (
           <output className="empty">Loading…</output>
         ) : (
           <div className="table-wrap">
@@ -173,7 +193,7 @@ export default function UsersPage() {
                             className="filter-select is-set"
                             aria-label={`Role for ${a.username}`}
                             value={a.role}
-                            disabled={busyId === a.id}
+                            disabled={busyIds.has(a.id)}
                             onChange={(e) =>
                               run(
                                 a.id,
@@ -205,7 +225,7 @@ export default function UsersPage() {
                           <button
                             type="button"
                             className={`btn btn-sm ${a.active ? "btn-danger" : ""}`}
-                            disabled={busyId === a.id}
+                            disabled={busyIds.has(a.id)}
                             onClick={() =>
                               run(
                                 a.id,

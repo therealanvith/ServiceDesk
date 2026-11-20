@@ -50,6 +50,9 @@ export interface UserProfile {
   email: string | null;
   role: Role;
   skills: Category[];
+  mustChangePassword: boolean;
+  googleLinked: boolean;
+  hasPassword: boolean;
 }
 
 export interface AuthResult {
@@ -181,6 +184,12 @@ export interface UserAccount {
   passwordSignIn: boolean;
   googleSignIn: boolean;
   createdAt: string;
+}
+
+export interface PriorityPreview {
+  priority: Priority;
+  criticality: Criticality;
+  matrix: Record<Impact, Record<Urgency, Priority>>;
 }
 
 export interface SlaPolicy {
@@ -381,6 +390,10 @@ export const api = {
   getAuthConfig: () => apiClient<AuthConfig>("/auth/config"),
 
   getCurrentUser: () => apiClient<UserProfile>("/users/me"),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiClient<void>("/users/me/password", post({ currentPassword, newPassword })),
+  linkGoogle: (credential: string) =>
+    apiClient<UserProfile>("/users/me/google", post({ credential })),
 
   // Users
   listTechnicians: () => apiClient<TechnicianItem[]>("/users/technicians"),
@@ -407,6 +420,10 @@ export const api = {
   updateService: (id: string, data: Omit<ItService, "id">) =>
     apiClient<ItService>(`/catalog/services/${id}`, put(data)),
   listSlaPolicies: () => apiClient<SlaPolicy[]>("/catalog/sla-policies"),
+  previewPriority: (impact: Impact, urgency: Urgency, serviceId?: string) =>
+    apiClient<PriorityPreview>(
+      `/catalog/priority-preview?impact=${impact}&urgency=${urgency}${serviceId ? `&serviceId=${serviceId}` : ""}`
+    ),
   updateSlaPolicy: (priority: Priority, responseMinutes: number, resolutionMinutes: number) =>
     apiClient<SlaPolicy>(
       `/catalog/sla-policies/${priority}`,

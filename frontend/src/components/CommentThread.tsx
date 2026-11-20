@@ -93,6 +93,9 @@ export function CommentThread({
           onChange={(e) => setCommentText(e.target.value)}
           placeholder={comments.length === 0 ? "Start the conversation…" : "Write a reply…"}
           aria-label="Comment"
+          // Locked while posting so nothing typed meanwhile is lost when the box clears.
+          readOnly={submitting}
+          aria-busy={submitting || undefined}
         />
         <div className="composer-footer">
           {canPostInternal ? (

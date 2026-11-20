@@ -19,6 +19,7 @@ import com.servicedesk.infrastructure.persistence.entity.IncidentEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Clock;
 import java.time.Duration;
@@ -94,6 +95,14 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
           if (filter.reporterId() != null) {
             predicates.add(
                 cb.equal(root.get("reporter").get("id"), filter.reporterId().getValue()));
+          }
+          if (filter.participantId() != null) {
+            // Left join so unassigned tickets the user reported are still matched.
+            var assignee = root.join("assignee", JoinType.LEFT);
+            predicates.add(
+                cb.or(
+                    cb.equal(assignee.get("id"), filter.participantId().getValue()),
+                    cb.equal(root.get("reporter").get("id"), filter.participantId().getValue())));
           }
           if (filter.slaStatus() != null) {
             predicates.add(cb.equal(root.get("slaStatus"), filter.slaStatus()));

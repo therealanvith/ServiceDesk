@@ -11,7 +11,7 @@ import {
 } from "@/lib/apiClient";
 import { CATEGORY_LABELS, isAdmin } from "@/lib/labels";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const STRATEGIES = [
   {
@@ -37,9 +37,15 @@ const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[];
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
 
-  const [activeStrategy, setActiveStrategy] = useState("SKILL_MATCH");
-  const [selectedStrategy, setSelectedStrategy] = useState("SKILL_MATCH");
+  const [activeStrategy, setActiveStrategy] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
+  const [techniciansFailed, setTechniciansFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  // Technicians with a skill save in flight, and a counter of saves, so a slower list refresh
+  // can never put back skills that were changed after it started.
+  const [pendingSkills, setPendingSkills] = useState<Set<string>>(new Set());
+  const skillSaves = useRef(0);
   const [loading, setLoading] = useState(true);
   const [savingStrategy, setSavingStrategy] = useState(false);
   const [evaluatingSla, setEvaluatingSla] = useState(false);
@@ -47,6 +53,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
     if (!isAdmin(user?.role)) return;
     let isMounted = true;
@@ -55,9 +62,10 @@ export default function AdminPage() {
     Promise.allSettled([api.getAssignmentConfig(), api.listTechnicians()])
       .then(([configRes, techRes]) => {
         if (!isMounted) return;
-        if (configRes.status === "rejected" || techRes.status === "rejected") {
-          setError("Unable to load settings. Please try again.");
+        if (configRes.status === "rejected") {
+          setError("Couldn’t load the current assignment rule.");
         }
+        setTechniciansFailed(techRes.status === "rejected");
         if (configRes.status === "fulfilled") {
           setActiveStrategy(configRes.value.activeStrategy);
           setSelectedStrategy(configRes.value.activeStrategy);
@@ -73,13 +81,14 @@ export default function AdminPage() {
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user, reloadKey]);
 
   const handleSaveStrategy = async () => {
     setSavingStrategy(true);
     setError(null);
     setMessage(null);
     try {
+      if (!selectedStrategy) return;
       const res = await api.updateAssignmentConfig(selectedStrategy);
       setActiveStrategy(res.activeStrategy);
       const name = STRATEGIES.find((s) => s.id === res.activeStrategy)?.name ?? res.activeStrategy;
@@ -95,26 +104,53 @@ export default function AdminPage() {
     setEvaluatingSla(true);
     setError(null);
     try {
-      const res = await api.triggerSlaEvaluation();
-      setSlaResult(res);
-      const updatedTechs = await api.listTechnicians();
-      setTechnicians(updatedTechs);
+      setSlaResult(await api.triggerSlaEvaluation());
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to run SLA check");
-    } finally {
       setEvaluatingSla(false);
+      return;
+    }
+    setEvaluatingSla(false);
+
+    // Refresh workloads; keep skills that were edited (or are being saved) since it started.
+    const savesAtStart = skillSaves.current;
+    try {
+      const fresh = await api.listTechnicians();
+      setTechnicians((current) =>
+        fresh.map((tech) => {
+          const mine = current.find((t) => t.id === tech.id);
+          const editedSince = skillSaves.current !== savesAtStart;
+          return mine && (editedSince || pendingSkills.has(tech.id))
+            ? { ...tech, skills: mine.skills }
+            : tech;
+        })
+      );
+      setTechniciansFailed(false);
+    } catch {
+      setError("The SLA check ran, but the technician list couldn’t be refreshed.");
     }
   };
 
+  // One skill save per technician at a time: each PUT replaces the whole list, so overlapping
+  // saves could undo each other. The buttons for that technician are disabled meanwhile.
   const handleToggleSkill = async (tech: TechnicianItem, cat: Category) => {
+    if (pendingSkills.has(tech.id)) return;
     const hasSkill = tech.skills.includes(cat);
     const newSkills = hasSkill ? tech.skills.filter((s) => s !== cat) : [...tech.skills, cat];
 
+    skillSaves.current += 1;
+    setPendingSkills((prev) => new Set(prev).add(tech.id));
     try {
       const updated = await api.updateTechnicianSkills(tech.id, newSkills);
       setTechnicians((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update skills");
+    } finally {
+      setPendingSkills((prev) => {
+        const next = new Set(prev);
+        next.delete(tech.id);
+        return next;
+      });
     }
   };
 
@@ -184,7 +220,7 @@ export default function AdminPage() {
               type="button"
               className="btn btn-primary"
               onClick={handleSaveStrategy}
-              disabled={savingStrategy || selectedStrategy === activeStrategy}
+              disabled={!activeStrategy || savingStrategy || selectedStrategy === activeStrategy}
             >
               {savingStrategy ? "Saving…" : "Save"}
             </button>
@@ -261,43 +297,53 @@ export default function AdminPage() {
           <h2>Technicians</h2>
           <p>Click a skill to turn it on or off. Skills decide who gets matched to a ticket.</p>
         </div>
-        <div className="card table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Open</th>
-                <th scope="col">Skills</th>
-              </tr>
-            </thead>
-            <tbody>
-              {technicians.map((tech) => (
-                <tr key={tech.id}>
-                  <td>
-                    <span style={{ fontWeight: 550 }}>{tech.fullName}</span>
-                    <span className="props-sub mono">{tech.username}</span>
-                  </td>
-                  <td className="load">{tech.activeTicketsCount}</td>
-                  <td>
-                    <div className="row" style={{ gap: 4 }}>
-                      {ALL_CATEGORIES.map((cat) => (
-                        <button
-                          key={cat}
-                          type="button"
-                          className="skill-toggle"
-                          aria-pressed={tech.skills.includes(cat)}
-                          onClick={() => handleToggleSkill(tech, cat)}
-                        >
-                          {CATEGORY_LABELS[cat]}
-                        </button>
-                      ))}
-                    </div>
-                  </td>
+        {techniciansFailed ? (
+          <div className="card empty" role="alert">
+            <h2>Couldn’t load technicians</h2>
+            <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div className="card table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Open</th>
+                  <th scope="col">Skills</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {technicians.map((tech) => (
+                  <tr key={tech.id}>
+                    <td>
+                      <span style={{ fontWeight: 550 }}>{tech.fullName}</span>
+                      <span className="props-sub mono">{tech.username}</span>
+                    </td>
+                    <td className="load">{tech.activeTicketsCount}</td>
+                    <td>
+                      <div className="row" style={{ gap: 4 }}>
+                        {ALL_CATEGORIES.map((cat) => (
+                          <button
+                            key={cat}
+                            type="button"
+                            className="skill-toggle"
+                            aria-pressed={tech.skills.includes(cat)}
+                            disabled={pendingSkills.has(tech.id)}
+                            onClick={() => handleToggleSkill(tech, cat)}
+                          >
+                            {CATEGORY_LABELS[cat]}
+                          </button>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </>
   );

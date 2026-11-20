@@ -97,7 +97,9 @@ export function Navbar() {
           {user && (
             <div className="user-chip">
               <span className="user-chip-text">
-                <span className="user-chip-name">{user.fullName}</span>
+                <Link href="/account" className="user-chip-name">
+                  {user.fullName}
+                </Link>
                 <br />
                 <span className="user-chip-role">{ROLE_LABELS[user.role]}</span>
               </span>

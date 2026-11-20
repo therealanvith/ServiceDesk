@@ -43,10 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Every page except sign-in and sign-up needs an account.
+  // Every page except sign-in and sign-up needs an account; a temporary password must be
+  // replaced first (the API refuses other requests until it is).
   useEffect(() => {
     if (!loading && !user && !PUBLIC_PATHS.includes(pathname)) {
       router.replace("/login");
+    } else if (user?.mustChangePassword && pathname !== "/account") {
+      router.replace("/account");
     }
   }, [loading, user, pathname, router]);
 

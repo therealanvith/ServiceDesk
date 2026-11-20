@@ -36,6 +36,8 @@ export default function IncidentsDashboardPage() {
   const [services, setServices] = useState<ItService[]>([]);
   const [technicians, setTechnicians] = useState<TechnicianItem[] | undefined>();
   const [workload, setWorkload] = useState<Workload | null>(null);
+  const [lookupFailed, setLookupFailed] = useState(false);
+  const [lookupKey, setLookupKey] = useState(0);
 
   const role = user?.role;
   const admin = isAdmin(role);
@@ -47,25 +49,27 @@ export default function IncidentsDashboardPage() {
   }, []);
 
   // Lookup data for the filters, and a technician's own workload summary.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: lookupKey re-runs the load on refresh
   useEffect(() => {
     if (!role) return;
+    setLookupFailed(false);
     api
       .listServices(true)
       .then(setServices)
-      .catch(() => {});
+      .catch(() => setLookupFailed(true));
     if (role === "ADMINISTRATOR" || role === "ROOT") {
       api
         .listTechnicians()
         .then(setTechnicians)
-        .catch(() => {});
+        .catch(() => setLookupFailed(true));
     }
     if (role === "TECHNICIAN") {
       api
         .getMyWorkload()
         .then(setWorkload)
-        .catch(() => {});
+        .catch(() => setLookupFailed(true));
     }
-  }, [role]);
+  }, [role, lookupKey]);
 
   useEffect(() => {
     let active = true;
@@ -91,6 +95,11 @@ export default function IncidentsDashboardPage() {
           size: PAGE_SIZE,
         });
         if (!active) return;
+        // The list can shrink (filters, closures) while you're on a later page: jump back.
+        if (res.content.length === 0 && page > 0 && res.totalElements > 0) {
+          setPage(Math.max(0, (res.totalPages || 1) - 1));
+          return;
+        }
         setIncidents(res.content);
         setTotalPages(res.totalPages || 1);
         setTotalElements(res.totalElements);
@@ -124,11 +133,7 @@ export default function IncidentsDashboardPage() {
   const reloadQueue = () => {
     setFilters((current) => ({ ...current }));
     void checkBackendHealth().then(setHealth);
-    if (role === "TECHNICIAN")
-      api
-        .getMyWorkload()
-        .then(setWorkload)
-        .catch(() => {});
+    setLookupKey((k) => k + 1);
   };
 
   if (authLoading || !user) {
@@ -164,6 +169,14 @@ export default function IncidentsDashboardPage() {
         </Link>
       </div>
 
+      {lookupFailed && (
+        <p className="alert" role="alert" style={{ marginBottom: 16 }}>
+          Some filters or your workload summary couldn’t load.{" "}
+          <button type="button" className="link-btn" onClick={() => setLookupKey((k) => k + 1)}>
+            Try again
+          </button>
+        </p>
+      )}
       {workload && (
         <dl className="stat-strip" aria-label="Your workload">
           <div>

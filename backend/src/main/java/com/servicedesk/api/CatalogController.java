@@ -1,10 +1,13 @@
 package com.servicedesk.api;
 
+import com.servicedesk.api.dto.PriorityPreviewResponse;
 import com.servicedesk.api.dto.ServiceRequest;
 import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.SlaPolicyResponse;
 import com.servicedesk.api.dto.UpdateSlaPolicyRequest;
 import com.servicedesk.application.CatalogApplicationService;
+import com.servicedesk.domain.incident.Impact;
+import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.priority.Priority;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -49,6 +52,14 @@ public class CatalogController {
   public ResponseEntity<ServiceResponse> updateService(
       @PathVariable UUID id, @Valid @RequestBody ServiceRequest request) {
     return ResponseEntity.ok(catalog.updateService(id, request));
+  }
+
+  @GetMapping("/priority-preview")
+  public ResponseEntity<PriorityPreviewResponse> previewPriority(
+      @RequestParam Impact impact,
+      @RequestParam Urgency urgency,
+      @RequestParam(required = false) UUID serviceId) {
+    return ResponseEntity.ok(catalog.previewPriority(impact, urgency, serviceId));
   }
 
   @GetMapping("/sla-policies")

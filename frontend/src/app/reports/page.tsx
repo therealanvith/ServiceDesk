@@ -57,13 +57,17 @@ export default function ReportsPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
     if (!isAdmin(user?.role)) return;
+    setError(null);
     api
       .getReport()
       .then(setReport)
       .catch((err: Error) => setError(err.message));
-  }, [user]);
+  }, [user, reloadKey]);
 
   if (authLoading || !user) return <output className="empty">Loading…</output>;
   if (!isAdmin(user.role)) {
@@ -78,9 +82,13 @@ export default function ReportsPage() {
   }
   if (error) {
     return (
-      <p className="alert" role="alert">
-        {error}
-      </p>
+      <div className="card empty" role="alert">
+        <h2>Couldn’t load reports</h2>
+        <p>{error}</p>
+        <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+          Try again
+        </button>
+      </div>
     );
   }
   if (!report) return <output className="empty">Loading reports…</output>;

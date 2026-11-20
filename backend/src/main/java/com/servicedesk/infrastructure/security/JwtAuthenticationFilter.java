@@ -16,6 +16,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+  /** Whether a user with a temporary password may call this endpoint. */
+  private static boolean isAllowedBeforePasswordChange(HttpServletRequest request) {
+    String path = request.getRequestURI();
+    return path.equals("/api/v1/users/me")
+        || path.equals("/api/v1/users/me/password")
+        || path.startsWith("/api/v1/auth/")
+        || path.equals("/api/v1/health");
+  }
+
   private final JwtTokenProvider jwtTokenProvider;
   private final DomainUserDetailsService userDetailsService;
 
@@ -59,6 +68,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
           authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
           SecurityContextHolder.getContext().setAuthentication(authentication);
+
+          if (userDetails instanceof SecurityUser securityUser
+              && securityUser.getUserEntity().isMustChangePassword()
+              && !isAllowedBeforePasswordChange(request)) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response
+                .getWriter()
+                .write(
+                    "{\"status\":403,\"error\":\"Forbidden\","
+                        + "\"message\":\"Change your temporary password to continue\","
+                        + "\"code\":\"PASSWORD_CHANGE_REQUIRED\"}");
+            return;
+          }
         }
       }
     }

@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Set;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,15 +20,27 @@ import org.springframework.stereotype.Component;
 public class JwtTokenProvider {
 
   private static final String HMAC_SHA256 = "HmacSHA256";
+
+  /** Example/default values that appear in this repository and must never sign real tokens. */
+  private static final Set<String> PUBLIC_PLACEHOLDER_SECRETS =
+      Set.of(
+          "default_jwt_secret_key_minimum_thirty_two_bytes_long",
+          "default_dev_secret_key_change_in_production",
+          "replace_with_a_secure_random_base64_secret_key_at_least_32_bytes_long");
+
   private final byte[] secretKeyBytes;
   private final long validityInSeconds;
   private final ObjectMapper objectMapper;
 
   public JwtTokenProvider(
-      @Value("${app.security.jwt-secret:default_jwt_secret_key_minimum_thirty_two_bytes_long}")
-          String secret,
+      @Value("${app.security.jwt-secret}") String secret,
       @Value("${app.security.jwt-validity-seconds:86400}") long validityInSeconds,
       ObjectMapper objectMapper) {
+    if (secret == null || PUBLIC_PLACEHOLDER_SECRETS.contains(secret.trim())) {
+      // These values are committed to the repository, so anyone could forge tokens with them.
+      throw new IllegalStateException(
+          "Set JWT_SECRET to a private random value (e.g. `openssl rand -base64 48`)");
+    }
     this.secretKeyBytes = secret.getBytes(StandardCharsets.UTF_8);
     if (this.secretKeyBytes.length < 32) {
       // HS256 keys shorter than the hash output are trivially brute-forced.

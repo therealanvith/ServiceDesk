@@ -7,6 +7,7 @@ import {
   type CategorySuggestion,
   type Impact,
   type ItService,
+  type PriorityPreview,
   type SimilarIncident,
   type Urgency,
   api,
@@ -18,6 +19,7 @@ import { useEffect, useState } from "react";
 
 /** Wait for a pause in typing before asking the server for suggestions. */
 const DRAFT_DEBOUNCE_MS = 500;
+const DEFAULT_CATEGORY: Category = "APPLICATION";
 
 export default function NewIncidentPage() {
   const { user, loading } = useAuth();
@@ -25,37 +27,66 @@ export default function NewIncidentPage() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<Category>("APPLICATION");
+  const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [impact, setImpact] = useState<Impact>("MEDIUM");
   const [urgency, setUrgency] = useState<Urgency>("MEDIUM");
   const [serviceId, setServiceId] = useState("");
   const [services, setServices] = useState<ItService[]>([]);
+  const [servicesFailed, setServicesFailed] = useState(false);
+  const [servicesKey, setServicesKey] = useState(0);
+  const [preview, setPreview] = useState<PriorityPreview | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
   const [suggestion, setSuggestion] = useState<CategorySuggestion | null>(null);
   const [duplicates, setDuplicates] = useState<SimilarIncident[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: servicesKey re-runs the load for "Try again"
   useEffect(() => {
-    if (user)
-      api
-        .listServices()
-        .then(setServices)
-        .catch(() => {});
-  }, [user]);
+    if (!user) return;
+    setServicesFailed(false);
+    api
+      .listServices()
+      .then(setServices)
+      .catch(() => setServicesFailed(true));
+  }, [user, servicesKey]);
 
-  // Category suggestion and duplicate check run together on the draft text.
+  // The server owns the priority policy; ask it whenever an input changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey re-runs the request for "Try again"
   useEffect(() => {
+    if (!user) return;
+    let active = true;
+    setPreviewFailed(false);
+    api
+      .previewPriority(impact, urgency, serviceId || undefined)
+      .then((p) => active && setPreview(p))
+      .catch(() => active && setPreviewFailed(true));
+    return () => {
+      active = false;
+    };
+  }, [user, impact, urgency, serviceId, previewKey]);
+
+  // Category suggestion and duplicate check run together on the draft text. Advice belongs to
+  // the exact text that produced it: as soon as the text changes the old advice is dropped, and
+  // a category the system picked (not one the reporter chose) goes back to the default.
+  useEffect(() => {
+    setSuggestion(null);
+    setDuplicates([]);
+    if (!categoryTouched) setCategory(DEFAULT_CATEGORY);
     if (!user || (title.trim().length < 4 && description.trim().length < 10)) {
-      setSuggestion(null);
-      setDuplicates([]);
       return;
     }
     let active = true;
     const timer = window.setTimeout(() => {
       api
         .suggestCategory(title, description)
-        .then((s) => active && setSuggestion(s.category ? s : null))
+        .then((s) => {
+          if (!active) return;
+          setSuggestion(s.category ? s : null);
+          if (s.category && !categoryTouched) setCategory(s.category);
+        })
         .catch(() => {});
       api
         .checkDuplicates(title, description)
@@ -66,12 +97,7 @@ export default function NewIncidentPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [title, description, user]);
-
-  // Pre-select the suggestion until the reporter picks a category themselves.
-  useEffect(() => {
-    if (suggestion?.category && !categoryTouched) setCategory(suggestion.category);
-  }, [suggestion, categoryTouched]);
+  }, [title, description, user, categoryTouched]);
 
   const service = services.find((s) => s.id === serviceId);
 
@@ -177,6 +203,18 @@ export default function NewIncidentPage() {
               ))}
             </select>
             {service?.description && <span className="field-hint">{service.description}</span>}
+            {servicesFailed && (
+              <span className="field-hint" role="alert">
+                Couldn’t load the service list.{" "}
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setServicesKey((k) => k + 1)}
+                >
+                  Try again
+                </button>
+              </span>
+            )}
           </label>
 
           <div className="field-row">
@@ -207,7 +245,12 @@ export default function NewIncidentPage() {
                       <button
                         type="button"
                         className="link-btn"
-                        onClick={() => suggestion.category && setCategory(suggestion.category)}
+                        onClick={() => {
+                          if (suggestion.category) {
+                            setCategory(suggestion.category);
+                            setCategoryTouched(true);
+                          }
+                        }}
                       >
                         Use it
                       </button>
@@ -255,7 +298,9 @@ export default function NewIncidentPage() {
           <PriorityMatrixPreview
             impact={impact}
             urgency={urgency}
-            criticality={service?.criticality}
+            preview={preview}
+            failed={previewFailed}
+            onRetry={() => setPreviewKey((k) => k + 1)}
           />
         </aside>
       </div>

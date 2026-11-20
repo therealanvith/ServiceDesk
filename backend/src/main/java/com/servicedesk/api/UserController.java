@@ -1,6 +1,8 @@
 package com.servicedesk.api;
 
+import com.servicedesk.api.dto.ChangePasswordRequest;
 import com.servicedesk.api.dto.CreateUserRequest;
+import com.servicedesk.api.dto.GoogleSignInRequest;
 import com.servicedesk.api.dto.TechnicianResponse;
 import com.servicedesk.api.dto.UpdateSkillsRequest;
 import com.servicedesk.api.dto.UpdateUserActiveRequest;
@@ -37,6 +39,21 @@ public class UserController {
   public ResponseEntity<UserProfileResponse> getCurrentUser(Principal principal) {
     UserProfileResponse profile = userService.getUserProfile(principal.getName());
     return ResponseEntity.ok(profile);
+  }
+
+  @PostMapping("/me/password")
+  public ResponseEntity<Void> changePassword(
+      @Valid @RequestBody ChangePasswordRequest request, Principal principal) {
+    userService.changePassword(
+        principal.getName(), request.currentPassword(), request.newPassword());
+    return ResponseEntity.noContent().build();
+  }
+
+  /** Links Google sign-in to the signed-in account (proves ownership of both). */
+  @PostMapping("/me/google")
+  public ResponseEntity<UserProfileResponse> linkGoogle(
+      @Valid @RequestBody GoogleSignInRequest request, Principal principal) {
+    return ResponseEntity.ok(userService.linkGoogle(principal.getName(), request.credential()));
   }
 
   @GetMapping("/technicians")

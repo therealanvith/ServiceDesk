@@ -23,7 +23,13 @@ export default function NotificationsPage() {
   }, [user, load]);
 
   const markRead = async (id: string) => {
-    await api.markNotificationRead(id).catch(() => {});
+    try {
+      await api.markNotificationRead(id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Couldn’t mark the notification as read");
+      return;
+    }
+    setError(null);
     setInbox((current) =>
       current
         ? {
@@ -53,7 +59,14 @@ export default function NotificationsPage() {
             type="button"
             className="btn"
             onClick={async () => {
-              await api.markAllNotificationsRead().catch(() => {});
+              try {
+                await api.markAllNotificationsRead();
+                setError(null);
+              } catch (err: unknown) {
+                setError(
+                  err instanceof Error ? err.message : "Couldn’t mark notifications as read"
+                );
+              }
               load();
             }}
           >

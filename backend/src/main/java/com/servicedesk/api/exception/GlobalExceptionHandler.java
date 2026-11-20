@@ -75,7 +75,14 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<ErrorResponse> handleValidationException(
       MethodArgumentNotValidException ex, HttpServletRequest request) {
-    log.warn("Validation error on path {}: {}", request.getRequestURI(), ex.getMessage());
+    // Log only field names and constraint codes: the exception message includes rejected values,
+    // which can be passwords.
+    log.warn(
+        "Validation error on path {}: {}",
+        request.getRequestURI(),
+        ex.getBindingResult().getFieldErrors().stream()
+            .map(err -> err.getField() + "(" + err.getCode() + ")")
+            .toList());
 
     String detailedMessage =
         ex.getBindingResult().getFieldErrors().stream()

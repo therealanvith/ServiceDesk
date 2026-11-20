@@ -26,6 +26,25 @@ export default function IncidentDetailPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [commentsFailed, setCommentsFailed] = useState(false);
+  const [auditFailed, setAuditFailed] = useState(false);
+  const panelVersion = useRef(0);
+
+  // Comments and history load separately from the ticket, so one failing never hides the other,
+  // and after an action the confirmed ticket stays on screen while these refresh.
+  const loadPanels = useCallback(async () => {
+    if (!incidentId || !user) return;
+    const version = ++panelVersion.current;
+    const [cRes, aRes] = await Promise.allSettled([
+      api.getComments(incidentId),
+      user.role === "EMPLOYEE" ? Promise.resolve([]) : api.getAuditLogs(incidentId),
+    ]);
+    if (version !== panelVersion.current) return;
+    setCommentsFailed(cRes.status === "rejected");
+    setAuditFailed(aRes.status === "rejected");
+    if (cRes.status === "fulfilled") setComments(cRes.value);
+    if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
+  }, [incidentId, user]);
 
   const loadData = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -39,22 +58,14 @@ export default function IncidentDetailPage() {
       const inc = await api.getIncident(incidentId);
       if (version !== requestVersion.current) return;
       setIncident(inc);
-
-      const [cRes, aRes] = await Promise.allSettled([
-        api.getComments(incidentId),
-        user.role === "EMPLOYEE" ? Promise.resolve([]) : api.getAuditLogs(incidentId),
-      ]);
-
-      if (version !== requestVersion.current) return;
-      if (cRes.status === "fulfilled") setComments(cRes.value);
-      if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
+      await loadPanels();
     } catch (err: unknown) {
       if (version !== requestVersion.current) return;
       setError(err instanceof Error ? err.message : "Failed to load incident");
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [incidentId, user]);
+  }, [incidentId, user, loadPanels]);
 
   useEffect(() => {
     loadData();
@@ -132,13 +143,22 @@ export default function IncidentDetailPage() {
 
           {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
 
-          <CommentThread
-            incidentId={incident.id}
-            initialComments={comments}
-            currentUserRole={currentUserRole}
-          />
+          {commentsFailed ? (
+            <PanelError title="Comments" onRetry={loadPanels} />
+          ) : (
+            <CommentThread
+              incidentId={incident.id}
+              initialComments={comments}
+              currentUserRole={currentUserRole}
+            />
+          )}
 
-          {currentUserRole !== "EMPLOYEE" && <AuditTimeline logs={auditLogs} />}
+          {currentUserRole !== "EMPLOYEE" &&
+            (auditFailed ? (
+              <PanelError title="History" onRetry={loadPanels} />
+            ) : (
+              <AuditTimeline logs={auditLogs} />
+            ))}
         </div>
 
         <aside className="aside" aria-label="Ticket details">
@@ -232,12 +252,29 @@ export default function IncidentDetailPage() {
             isReporter={isReporter}
             isAssignee={Boolean(user && incident.assignee?.id === user.id)}
             onUpdate={(updated) => {
+              // The action succeeded: show the confirmed ticket and refresh only the panels.
               setIncident(updated);
-              loadData();
+              loadPanels();
             }}
           />
         </aside>
       </div>
     </>
+  );
+}
+
+function PanelError({ title, onRetry }: { title: string; onRetry: () => void }) {
+  return (
+    <section className="card" role="alert">
+      <div className="card-header">
+        <h2>{title}</h2>
+      </div>
+      <div className="card-body row">
+        <span className="muted">Couldn’t load this section.</span>
+        <button type="button" className="btn btn-sm" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    </section>
   );
 }

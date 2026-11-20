@@ -14,15 +14,28 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(NEW_SERVICE);
   const [saving, setSaving] = useState(false);
+  // Nothing can be created or edited until the catalogue has loaded, so a slow first load can't
+  // overwrite a service added in the meantime.
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
+    setStatus("loading");
     api
       .listServices(true)
-      .then(setServices)
-      .catch((err: Error) => onError(err.message));
-  }, [onError]);
+      .then((list) => {
+        setServices(list);
+        setStatus("ready");
+      })
+      .catch((err: Error) => {
+        onError(err.message);
+        setStatus("failed");
+      });
+  }, [onError, reloadKey]);
 
   const startEdit = (service: ItService | null) => {
+    if (saving) return;
     onError(null);
     setEditing(service?.id ?? "new");
     setDraft(
@@ -39,6 +52,7 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    const session = editing;
     setSaving(true);
     onError(null);
     try {
@@ -48,16 +62,17 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
         description: draft.description?.trim() || null,
       };
       const result =
-        editing === "new"
+        session === "new"
           ? await api.createService(payload)
-          : await api.updateService(editing as string, payload);
+          : await api.updateService(session as string, payload);
       setServices((list) =>
-        (editing === "new"
+        (session === "new"
           ? [...list, result]
           : list.map((s) => (s.id === result.id ? result : s))
         ).sort((a, b) => a.name.localeCompare(b.name))
       );
-      setEditing(null);
+      // Close only the editor that started this save.
+      setEditing((current) => (current === session ? null : current));
     } catch (err: unknown) {
       onError(err instanceof Error ? err.message : "Couldn't save the service");
     } finally {
@@ -108,7 +123,7 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
         </label>
       )}
       <div className="row-end service-form-wide">
-        <button type="button" className="btn" onClick={() => setEditing(null)}>
+        <button type="button" className="btn" disabled={saving} onClick={() => setEditing(null)}>
           Cancel
         </button>
         <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -117,6 +132,20 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
       </div>
     </form>
   );
+
+  if (status === "loading") {
+    return <output className="card empty">Loading services…</output>;
+  }
+  if (status === "failed") {
+    return (
+      <div className="card empty" role="alert">
+        <h2>Couldn’t load services</h2>
+        <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
@@ -136,7 +165,12 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
                 {s.description && <span className="radio-desc"> — {s.description}</span>}
               </div>
               <span className="muted col-nowrap">{CRITICALITY_LABELS[s.criticality]}</span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => startEdit(s)}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={saving}
+                onClick={() => startEdit(s)}
+              >
                 Edit
               </button>
             </li>
@@ -146,7 +180,12 @@ export function ServiceCatalogSettings({ onError }: { onError: (message: string 
           {editing === "new" ? (
             form
           ) : (
-            <button type="button" className="btn btn-sm" onClick={() => startEdit(null)}>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={saving}
+              onClick={() => startEdit(null)}
+            >
               Add a service
             </button>
           )}

@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /**
  * Filter criteria for multi-parameter incident searches. Every criterion is optional; null means
- * "any".
+ * "any". {@code participantId} matches tickets the user is assigned to <em>or</em> reported.
  */
 public record IncidentFilter(
     IncidentStatus status,
@@ -22,7 +22,33 @@ public record IncidentFilter(
     String searchText,
     UUID serviceId,
     Instant createdFrom,
-    Instant createdTo) {
+    Instant createdTo,
+    UserId participantId) {
+
+  public IncidentFilter(
+      IncidentStatus status,
+      Priority priority,
+      Category category,
+      UserId assigneeId,
+      UserId reporterId,
+      SlaStatus slaStatus,
+      String searchText,
+      UUID serviceId,
+      Instant createdFrom,
+      Instant createdTo) {
+    this(
+        status,
+        priority,
+        category,
+        assigneeId,
+        reporterId,
+        slaStatus,
+        searchText,
+        serviceId,
+        createdFrom,
+        createdTo,
+        null);
+  }
 
   public IncidentFilter(
       IncidentStatus status,
@@ -57,31 +83,33 @@ public record IncidentFilter(
     return new IncidentFilter(null, null, null, assigneeId, null, null, null);
   }
 
+  /** Only tickets this user reported (the caller's own assignee/reporter criteria are dropped). */
   public IncidentFilter withReporter(UserId reporter) {
-    return new IncidentFilter(
-        status,
-        priority,
-        category,
-        null,
-        reporter,
-        slaStatus,
-        searchText,
-        serviceId,
-        createdFrom,
-        createdTo);
+    return scoped(null, reporter, null);
   }
 
+  /** Only tickets assigned to this user. */
   public IncidentFilter withAssignee(UserId assignee) {
+    return scoped(assignee, null, null);
+  }
+
+  /** Only tickets this user is assigned to or reported. */
+  public IncidentFilter withParticipant(UserId participant) {
+    return scoped(null, null, participant);
+  }
+
+  private IncidentFilter scoped(UserId assignee, UserId reporter, UserId participant) {
     return new IncidentFilter(
         status,
         priority,
         category,
         assignee,
-        null,
+        reporter,
         slaStatus,
         searchText,
         serviceId,
         createdFrom,
-        createdTo);
+        createdTo,
+        participant);
   }
 }

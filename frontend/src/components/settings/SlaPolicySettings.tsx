@@ -11,10 +11,15 @@ export function SlaPolicySettings({ onError }: { onError: (message: string | nul
   const [drafts, setDrafts] = useState<Record<string, { response: string; resolution: string }>>(
     {}
   );
-  const [saving, setSaving] = useState<string | null>(null);
+  // Rows with a save in flight; each row is released only when its own request settles.
+  const [saving, setSaving] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
+    setStatus("loading");
     api
       .listSlaPolicies()
       .then((list) => {
@@ -27,9 +32,13 @@ export function SlaPolicySettings({ onError }: { onError: (message: string | nul
             ])
           )
         );
+        setStatus("ready");
       })
-      .catch((err: Error) => onError(err.message));
-  }, [onError]);
+      .catch((err: Error) => {
+        onError(err.message);
+        setStatus("failed");
+      });
+  }, [onError, reloadKey]);
 
   const save = async (policy: SlaPolicy) => {
     const draft = drafts[policy.priority];
@@ -40,11 +49,8 @@ export function SlaPolicySettings({ onError }: { onError: (message: string | nul
       onError("Targets must be whole numbers of minutes.");
       return;
     }
-    if (resolution < response) {
-      onError("Resolution target can't be shorter than the response target.");
-      return;
-    }
-    setSaving(policy.priority);
+    // The response-vs-resolution rule is enforced by the server; its message is shown on failure.
+    setSaving((prev) => new Set(prev).add(policy.priority));
     onError(null);
     try {
       const updated = await api.updateSlaPolicy(policy.priority, response, resolution);
@@ -53,9 +59,27 @@ export function SlaPolicySettings({ onError }: { onError: (message: string | nul
     } catch (err: unknown) {
       onError(err instanceof Error ? err.message : "Couldn't save the SLA target");
     } finally {
-      setSaving(null);
+      setSaving((prev) => {
+        const next = new Set(prev);
+        next.delete(policy.priority);
+        return next;
+      });
     }
   };
+
+  if (status === "loading") {
+    return <output className="card empty">Loading SLA targets…</output>;
+  }
+  if (status === "failed") {
+    return (
+      <div className="card empty" role="alert">
+        <h2>Couldn’t load SLA targets</h2>
+        <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="card table-wrap">
@@ -120,10 +144,10 @@ export function SlaPolicySettings({ onError }: { onError: (message: string | nul
                     <button
                       type="button"
                       className="btn btn-sm btn-primary"
-                      disabled={saving === p.priority}
+                      disabled={saving.has(p.priority)}
                       onClick={() => save(p)}
                     >
-                      {saving === p.priority ? "Saving…" : "Save"}
+                      {saving.has(p.priority) ? "Saving…" : "Save"}
                     </button>
                   ) : (
                     saved === p.priority && <span className="muted">Saved</span>

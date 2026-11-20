@@ -6,6 +6,8 @@ import { auditLabel, formatDateTime, humanize, isAdmin } from "@/lib/labels";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+const AUDIT_LIMIT = 500;
+
 export default function AuditPage() {
   const { user, loading: authLoading } = useAuth();
   const [logs, setLogs] = useState<AuditLogItem[] | null>(null);
@@ -13,13 +15,17 @@ export default function AuditPage() {
   const [action, setAction] = useState("");
   const [query, setQuery] = useState("");
 
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
     if (!isAdmin(user?.role)) return;
+    setError(null);
     api
-      .getRecentAuditLogs(500)
+      .getRecentAuditLogs(AUDIT_LIMIT)
       .then(setLogs)
       .catch((err: Error) => setError(err.message));
-  }, [user]);
+  }, [user, reloadKey]);
 
   const actions = useMemo(() => [...new Set((logs ?? []).map((l) => l.action))].sort(), [logs]);
   const visible = useMemo(() => {
@@ -51,7 +57,10 @@ export default function AuditPage() {
       <div className="page-header">
         <div>
           <h1>Audit log</h1>
-          <p>Every recorded action across all tickets, newest first.</p>
+          <p>
+            The most recent {AUDIT_LIMIT} recorded actions across all tickets, newest first. Search
+            and filters apply to these; each ticket’s page has its full history.
+          </p>
         </div>
       </div>
       {error && (
@@ -85,7 +94,14 @@ export default function AuditPage() {
             ))}
           </select>
         </div>
-        {!logs ? (
+        {error && !logs ? (
+          <div className="empty" role="alert">
+            <h2>Couldn’t load the audit log</h2>
+            <button type="button" className="btn" onClick={() => setReloadKey((k) => k + 1)}>
+              Try again
+            </button>
+          </div>
+        ) : !logs ? (
           <output className="empty">Loading…</output>
         ) : visible.length === 0 ? (
           <p className="empty">No matching entries.</p>

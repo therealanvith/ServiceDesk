@@ -42,8 +42,11 @@ reviews:
     - path: "backend/src/main/resources/db/migration/**"
       instructions: |
         Applied Flyway migrations must never be edited; changes need a new
-        version. Check constraints, foreign keys, indexes, and that the SQL runs
-        on both PostgreSQL and H2.
+        version. Check constraints, foreign keys and indexes. Migrations target
+        PostgreSQL 16 only (PostgreSQL-specific SQL such as partial indexes is
+        fine): FlywayMigrationsTest applies them to a real PostgreSQL container
+        and validates the JPA entities against the result. The H2 integration
+        tests generate their schema from the entities and never run these files.
     - path: "backend/src/test/**"
       instructions: |
         Check that tests cover boundary cases, invalid input, authorization, and

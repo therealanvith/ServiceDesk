@@ -10,20 +10,42 @@ interface SimilarIncidentsPanelProps {
 
 export function SimilarIncidentsPanel({ incidentId }: SimilarIncidentsPanelProps) {
   const [similar, setSimilar] = useState<SimilarIncident[]>([]);
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load for "Try again"
   useEffect(() => {
     let isMounted = true;
+    setFailed(false);
     api
       .getSimilarIncidents(incidentId)
       .then((res) => {
         if (isMounted) setSimilar(res);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (isMounted) setFailed(true);
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [incidentId]);
+  }, [incidentId, reloadKey]);
+
+  if (failed) {
+    return (
+      <section className="card" role="alert">
+        <div className="card-header">
+          <h2>Related tickets</h2>
+        </div>
+        <div className="card-body row">
+          <span className="muted">Couldn’t look for related tickets.</span>
+          <button type="button" className="btn btn-sm" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   // Only worth the space when there is something to show.
   if (similar.length === 0) {

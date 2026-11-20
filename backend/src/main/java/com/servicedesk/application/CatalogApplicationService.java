@@ -1,10 +1,15 @@
 package com.servicedesk.application;
 
+import com.servicedesk.api.dto.PriorityPreviewResponse;
 import com.servicedesk.api.dto.ServiceRequest;
 import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.SlaPolicyResponse;
 import com.servicedesk.api.dto.UpdateSlaPolicyRequest;
+import com.servicedesk.domain.incident.Impact;
+import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.priority.Priority;
+import com.servicedesk.domain.priority.PriorityCalculationStrategy;
+import com.servicedesk.domain.service.BusinessCriticality;
 import com.servicedesk.domain.sla.SlaPolicy;
 import com.servicedesk.domain.sla.SlaPolicyProvider;
 import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
@@ -14,7 +19,9 @@ import com.servicedesk.infrastructure.persistence.repository.SpringDataSlaPolicy
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +35,15 @@ public class CatalogApplicationService {
   private final SpringDataSlaPolicyJpaRepository slaPolicies;
   private final SlaPolicyProvider slaPolicyProvider;
   private final Clock clock;
+  private final PriorityCalculationStrategy priorityStrategy;
 
   public CatalogApplicationService(
       SpringDataItServiceJpaRepository services,
       SpringDataSlaPolicyJpaRepository slaPolicies,
       SlaPolicyProvider slaPolicyProvider,
-      Clock clock) {
+      Clock clock,
+      PriorityCalculationStrategy priorityStrategy) {
+    this.priorityStrategy = priorityStrategy;
     this.services = services;
     this.slaPolicies = slaPolicies;
     this.slaPolicyProvider = slaPolicyProvider;
@@ -81,6 +91,32 @@ public class CatalogApplicationService {
       service.setActive(request.active());
     }
     return toResponse(services.save(service));
+  }
+
+  /**
+   * The priority the server would assign, so the report form never re-implements the policy. An
+   * unknown or retired service counts as medium criticality, exactly as on creation.
+   */
+  @Transactional(readOnly = true)
+  public PriorityPreviewResponse previewPriority(Impact impact, Urgency urgency, UUID serviceId) {
+    BusinessCriticality criticality =
+        serviceId == null
+            ? BusinessCriticality.MEDIUM
+            : services
+                .findById(serviceId)
+                .filter(ItServiceEntity::isActive)
+                .map(ItServiceEntity::getCriticality)
+                .orElse(BusinessCriticality.MEDIUM);
+    Map<Impact, Map<Urgency, Priority>> matrix = new EnumMap<>(Impact.class);
+    for (Impact i : Impact.values()) {
+      Map<Urgency, Priority> row = new EnumMap<>(Urgency.class);
+      for (Urgency u : Urgency.values()) {
+        row.put(u, priorityStrategy.calculatePriority(i, u, criticality));
+      }
+      matrix.put(i, row);
+    }
+    return new PriorityPreviewResponse(
+        priorityStrategy.calculatePriority(impact, urgency, criticality), criticality, matrix);
   }
 
   @Transactional(readOnly = true)

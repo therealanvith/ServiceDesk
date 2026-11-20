@@ -3,7 +3,7 @@
 import { Icon } from "@/components/Icon";
 import { type IncidentDetail, type Priority, type TechnicianItem, api } from "@/lib/apiClient";
 import { CATEGORY_LABELS, PRIORITY_LABELS } from "@/lib/labels";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 interface StateActionsProps {
   incident: IncidentDetail;
@@ -93,14 +93,19 @@ export function StateActions({
   const status = incident.status;
   const terminal = status === "CLOSED" || status === "CANCELLED";
 
+  const [techniciansFailed, setTechniciansFailed] = useState(false);
+  const [technicianKey, setTechnicianKey] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: technicianKey re-runs the load for "Try again"
   useEffect(() => {
     if (dialog === "assign" && isTechOrAdmin) {
+      setTechniciansFailed(false);
       api
         .listTechnicians()
         .then(setTechnicians)
-        .catch(() => {});
+        .catch(() => setTechniciansFailed(true));
     }
-  }, [dialog, isTechOrAdmin]);
+  }, [dialog, isTechOrAdmin, technicianKey]);
 
   const open = (kind: DialogKind) => {
     setText("");
@@ -108,11 +113,11 @@ export function StateActions({
   };
 
   const handleAction = async (actionFn: () => Promise<IncidentDetail>) => {
-    setDialog(null);
     setLoading(true);
     setError(null);
     try {
       const updated = await actionFn();
+      setDialog(null);
       onUpdate(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -195,7 +200,7 @@ export function StateActions({
 
   return (
     <section className="card card-body" aria-label="Actions">
-      {error && (
+      {error && !dialog && (
         <p className="alert" role="alert" style={{ marginBottom: 10 }}>
           {error}
         </p>
@@ -210,7 +215,12 @@ export function StateActions({
       )}
 
       {dialog === "close" && (
-        <Modal title="Confirm the fix" onClose={() => setDialog(null)}>
+        <Modal
+          error={dialog ? error : null}
+          busy={loading}
+          title="Confirm the fix"
+          onClose={() => setDialog(null)}
+        >
           <p>Closing confirms the problem is solved. Tickets can’t be reopened after closing.</p>
           {isReporter && (
             <fieldset className="field rating">
@@ -264,7 +274,24 @@ export function StateActions({
       )}
 
       {dialog === "assign" && (
-        <Modal title="Assign ticket" onClose={() => setDialog(null)}>
+        <Modal
+          error={dialog ? error : null}
+          busy={loading}
+          title="Assign ticket"
+          onClose={() => setDialog(null)}
+        >
+          {techniciansFailed && (
+            <p className="alert" role="alert">
+              Couldn’t load technicians, so only automatic assignment is available.{" "}
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => setTechnicianKey((k) => k + 1)}
+              >
+                Try again
+              </button>
+            </p>
+          )}
           <label className="field">
             Technician
             <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)}>
@@ -296,7 +323,12 @@ export function StateActions({
       )}
 
       {dialog === "override" && (
-        <Modal title="Change priority" onClose={() => setDialog(null)}>
+        <Modal
+          error={dialog ? error : null}
+          busy={loading}
+          title="Change priority"
+          onClose={() => setDialog(null)}
+        >
           <label className="field">
             New priority
             <select
@@ -339,7 +371,12 @@ export function StateActions({
       )}
 
       {textDialog && (
-        <Modal title={textDialog.title} onClose={() => setDialog(null)}>
+        <Modal
+          error={dialog ? error : null}
+          busy={loading}
+          title={textDialog.title}
+          onClose={() => setDialog(null)}
+        >
           <p>{textDialog.description}</p>
           <label className="field">
             {textDialog.label}
@@ -373,35 +410,71 @@ function Modal({
   title,
   onClose,
   children,
+  error,
+  busy,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  error?: string | null;
+  busy?: boolean;
 }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const dialog = ref.current;
+    if (!dialog) return;
+    const opener = document.activeElement as HTMLElement | null;
+    // showModal() makes the rest of the page inert and traps focus inside the dialog.
+    if (!dialog.open) dialog.showModal();
+    dialog.querySelector<HTMLElement>("textarea, select, input, button:not(.icon-btn)")?.focus();
+    const onCancel = (e: Event) => {
+      e.preventDefault();
+      closeRef.current();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    dialog.addEventListener("cancel", onCancel);
+    return () => {
+      dialog.removeEventListener("cancel", onCancel);
+      if (dialog.open) dialog.close();
+      opener?.focus();
+    };
+  }, []);
 
   return (
-    <div
-      className="modal-backdrop"
+    <dialog
+      ref={ref}
+      className="modal"
+      aria-labelledby="modal-title"
+      aria-busy={busy || undefined}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        // A click on the backdrop (outside the dialog box) closes it.
+        if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
-      <dialog open className="modal" aria-modal="true" aria-labelledby="modal-title">
-        <div className="modal-header">
-          <h2 id="modal-title">{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </dialog>
-    </div>
+      <div className="modal-header">
+        <h2 id="modal-title">{title}</h2>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onClose}
+          aria-label="Close"
+          disabled={busy}
+        >
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+      <div className="modal-body">
+        {error && (
+          <p className="alert" role="alert">
+            {error}
+          </p>
+        )}
+        <fieldset className="modal-fields" disabled={busy}>
+          {children}
+        </fieldset>
+      </div>
+    </dialog>
   );
 }

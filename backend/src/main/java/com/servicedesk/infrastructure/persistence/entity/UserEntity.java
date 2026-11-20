@@ -45,6 +45,17 @@ public class UserEntity {
   @Column(name = "is_active", nullable = false)
   private boolean active = true;
 
+  @Column(name = "must_change_password", nullable = false)
+  private boolean mustChangePassword = false;
+
+  public boolean isMustChangePassword() {
+    return mustChangePassword;
+  }
+
+  public void setMustChangePassword(boolean mustChangePassword) {
+    this.mustChangePassword = mustChangePassword;
+  }
+
   @OneToMany(
       mappedBy = "user",
       cascade = CascadeType.ALL,

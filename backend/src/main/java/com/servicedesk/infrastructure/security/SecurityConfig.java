@@ -1,13 +1,19 @@
 package com.servicedesk.infrastructure.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.servicedesk.api.dto.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -31,10 +37,16 @@ public class SecurityConfig {
 
   private final List<String> allowedOrigins;
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
+  private final ObjectMapper objectMapper;
+  private final Clock clock;
 
   public SecurityConfig(
       @Value("${app.security.cors.allowed-origins:http://localhost:3000}") String allowedOriginsStr,
-      JwtAuthenticationFilter jwtAuthenticationFilter) {
+      JwtAuthenticationFilter jwtAuthenticationFilter,
+      ObjectMapper objectMapper,
+      Clock clock) {
+    this.objectMapper = objectMapper;
+    this.clock = clock;
     this.allowedOrigins =
         Arrays.stream(allowedOriginsStr.split(","))
             .map(String::trim)
@@ -62,10 +74,18 @@ public class SecurityConfig {
                 errors
                     .authenticationEntryPoint(
                         (request, response, exception) ->
-                            writeError(response, 401, "Please sign in again to continue"))
+                            writeError(
+                                request,
+                                response,
+                                HttpStatus.UNAUTHORIZED,
+                                "Please sign in again to continue"))
                     .accessDeniedHandler(
                         (request, response, exception) ->
-                            writeError(response, 403, "You don't have permission to do that")))
+                            writeError(
+                                request,
+                                response,
+                                HttpStatus.FORBIDDEN,
+                                "You don't have permission to do that")))
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -79,7 +99,7 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/api/v1/admin/**")
                     .hasAnyRole("ADMINISTRATOR", "ROOT")
-                    .requestMatchers("/api/v1/users/me")
+                    .requestMatchers("/api/v1/users/me", "/api/v1/users/me/**")
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/users/technicians")
                     .hasAnyRole("ADMINISTRATOR", "ROOT")
@@ -96,12 +116,21 @@ public class SecurityConfig {
     return http.build();
   }
 
-  private static void writeError(HttpServletResponse response, int status, String message)
+  /** 401/403 bodies use the same {@link ErrorResponse} shape as every other API error. */
+  private void writeError(
+      HttpServletRequest request, HttpServletResponse response, HttpStatus status, String message)
       throws IOException {
-    response.setStatus(status);
+    response.setStatus(status.value());
     response.setContentType("application/json");
     response.setCharacterEncoding("UTF-8");
-    response.getWriter().write("{\"message\":\"" + message.replace("\"", "\\\"") + "\"}");
+    objectMapper.writeValue(
+        response.getOutputStream(),
+        new ErrorResponse(
+            Instant.now(clock),
+            status.value(),
+            status.getReasonPhrase(),
+            message,
+            request.getRequestURI()));
   }
 
   @Bean

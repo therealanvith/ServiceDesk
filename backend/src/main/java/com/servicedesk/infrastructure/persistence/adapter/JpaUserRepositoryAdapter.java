@@ -10,6 +10,8 @@ import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserSkillEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -23,12 +25,15 @@ public class JpaUserRepositoryAdapter implements UserRepository {
 
   private final SpringDataUserJpaRepository userJpaRepository;
   private final SpringDataIncidentJpaRepository incidentJpaRepository;
+  private final Clock clock;
 
   public JpaUserRepositoryAdapter(
       SpringDataUserJpaRepository userJpaRepository,
-      SpringDataIncidentJpaRepository incidentJpaRepository) {
+      SpringDataIncidentJpaRepository incidentJpaRepository,
+      Clock clock) {
     this.userJpaRepository = userJpaRepository;
     this.incidentJpaRepository = incidentJpaRepository;
+    this.clock = clock;
   }
 
   @Override
@@ -62,11 +67,22 @@ public class JpaUserRepositoryAdapter implements UserRepository {
     entity.setEmail(user.getEmail());
     entity.setRole(user.getRole());
     entity.setActive(user.isAvailable());
+    Instant now = clock.instant();
+    if (entity.getCreatedAt() == null) {
+      entity.setCreatedAt(now);
+    }
+    entity.setUpdatedAt(now);
 
-    // Update skills
-    entity.getSkills().clear();
-    for (Category category : user.getSkills()) {
-      entity.getSkills().add(new UserSkillEntity(UUID.randomUUID(), entity, category));
+    // Keep existing skill rows and add only new ones: deleting and re-inserting the same
+    // (user, category) in one flush can violate the unique constraint.
+    Set<Category> wanted = user.getSkills();
+    entity.getSkills().removeIf(skill -> !wanted.contains(skill.getCategory()));
+    Set<Category> existing =
+        entity.getSkills().stream().map(UserSkillEntity::getCategory).collect(Collectors.toSet());
+    for (Category category : wanted) {
+      if (!existing.contains(category)) {
+        entity.getSkills().add(new UserSkillEntity(UUID.randomUUID(), entity, category));
+      }
     }
 
     UserEntity saved = userJpaRepository.save(entity);

@@ -107,48 +107,100 @@ public class UserApplicationService {
    * Signs in with a Google ID token. Existing accounts are matched by Google id, then by verified
    * email; anyone else gets a new employee account. Roles are changed later by root.
    */
+  /**
+   * Signs in with a Google ID token.
+   *
+   * <p>Accounts are matched only by Google's stable subject id. An existing account is never taken
+   * over just because it has the same email: emails entered at registration are not verified, so
+   * someone could register a victim's address first. Existing users link Google from "Your account"
+   * while signed in ({@link #linkGoogle}).
+   */
   public AuthResponse loginWithGoogle(String credential) {
     if (!googleVerifier.isEnabled()) {
       throw new IllegalArgumentException("Google sign-in is not enabled");
     }
     GoogleIdentity identity = googleVerifier.verify(credential);
 
-    UserEntity user =
-        userJpaRepository
-            .findByGoogleSub(identity.subject())
-            .or(() -> userJpaRepository.findByEmailIgnoreCase(identity.email()))
-            .orElse(null);
-
-    if (user == null) {
-      String name =
-          identity.name() != null && !identity.name().isBlank()
-              ? identity.name()
-              : identity.email();
-      user =
-          new UserEntity(
-              UUID.randomUUID(),
-              uniqueUsername(identity.email()),
-              null,
-              truncate(name, 100),
-              identity.email(),
-              Role.EMPLOYEE,
-              true,
-              clock.instant(),
-              clock.instant());
-      user.setGoogleSub(identity.subject());
-      user = userJpaRepository.save(user);
-    } else {
-      if (user.getGoogleSub() == null) {
-        user.setGoogleSub(identity.subject());
-      } else if (!user.getGoogleSub().equals(identity.subject())) {
-        // Same email, different Google account: never silently take over an existing user.
-        throw new BadCredentialsException("This email is linked to a different Google account.");
-      }
+    UserEntity user = userJpaRepository.findByGoogleSub(identity.subject()).orElse(null);
+    if (user != null) {
       if (!user.isActive()) {
         throw new BadCredentialsException("Your account has been disabled.");
       }
+      return issueSession(user);
     }
-    return issueSession(user);
+
+    if (userJpaRepository.findByEmailIgnoreCase(identity.email()).isPresent()) {
+      throw new BadCredentialsException(
+          "An account with this email already exists. Sign in with your username and password,"
+              + " then link Google from Your account.");
+    }
+    if (!registrationEnabled) {
+      throw new UnauthorizedOperationException(
+          "New accounts are created by an administrator. Ask IT to add you.");
+    }
+
+    String name =
+        identity.name() != null && !identity.name().isBlank() ? identity.name() : identity.email();
+    UserEntity created =
+        new UserEntity(
+            UUID.randomUUID(),
+            uniqueUsername(identity.email()),
+            null,
+            truncate(name, 100),
+            identity.email(),
+            Role.EMPLOYEE,
+            true,
+            clock.instant(),
+            clock.instant());
+    created.setGoogleSub(identity.subject());
+    return issueSession(userJpaRepository.save(created));
+  }
+
+  /** Links a Google identity to the signed-in account; proves ownership of both. */
+  public UserProfileResponse linkGoogle(String username, String credential) {
+    if (!googleVerifier.isEnabled()) {
+      throw new IllegalArgumentException("Google sign-in is not enabled");
+    }
+    GoogleIdentity identity = googleVerifier.verify(credential);
+    UserEntity user =
+        userJpaRepository
+            .findByUsername(username)
+            .orElseThrow(() -> new UserNotFoundException("User not found: " + username));
+    userJpaRepository
+        .findByGoogleSub(identity.subject())
+        .filter(other -> !other.getId().equals(user.getId()))
+        .ifPresent(
+            other -> {
+              throw new IllegalArgumentException(
+                  "This Google account is already linked to another user");
+            });
+    user.setGoogleSub(identity.subject());
+    user.setUpdatedAt(clock.instant());
+    return toProfileResponse(userJpaRepository.save(user));
+  }
+
+  /**
+   * Changes the signed-in user's password. Required before anything else for accounts created with
+   * a temporary password.
+   */
+  public void changePassword(String username, String currentPassword, String newPassword) {
+    UserEntity user =
+        userJpaRepository
+            .findByUsername(username)
+            .orElseThrow(() -> new UserNotFoundException("User not found: " + username));
+    if (user.getPasswordHash() != null
+        && (currentPassword == null
+            || !passwordEncoder.matches(currentPassword, user.getPasswordHash()))) {
+      throw new IllegalArgumentException("Your current password is incorrect");
+    }
+    if (user.getPasswordHash() != null
+        && passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+      throw new IllegalArgumentException("Choose a different password from your current one");
+    }
+    user.setPasswordHash(passwordEncoder.encode(newPassword));
+    user.setMustChangePassword(false);
+    user.setUpdatedAt(clock.instant());
+    userJpaRepository.save(user);
   }
 
   // --- Root-only user management ---
@@ -162,12 +214,22 @@ public class UserApplicationService {
 
   public UserAccountResponse createUser(CreateUserRequest request, String actorUsername) {
     requireMayGrant(actorRole(actorUsername), request.role());
-    return createAccount(
-        request.username(),
-        request.fullName(),
-        request.email(),
-        request.role(),
-        request.password());
+    UserAccountResponse created =
+        createAccount(
+            request.username(),
+            request.fullName(),
+            request.email(),
+            request.role(),
+            request.password());
+    // The administrator chose this password, so the person must replace it on first sign-in.
+    userJpaRepository
+        .findById(created.id())
+        .ifPresent(
+            u -> {
+              u.setMustChangePassword(true);
+              userJpaRepository.save(u);
+            });
+    return created;
   }
 
   private UserAccountResponse createAccount(
@@ -338,7 +400,10 @@ public class UserApplicationService {
         user.getFullName(),
         user.getEmail(),
         user.getRole(),
-        skills);
+        skills,
+        user.isMustChangePassword(),
+        user.getGoogleSub() != null,
+        user.getPasswordHash() != null);
   }
 
   private TechnicianResponse toTechnicianResponse(UserEntity tech) {

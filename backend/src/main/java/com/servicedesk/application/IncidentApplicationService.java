@@ -45,7 +45,6 @@ import com.servicedesk.domain.intelligence.SimilarityStrategy;
 import com.servicedesk.domain.notification.NotificationChannel;
 import com.servicedesk.domain.notification.NotificationMessage;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
-import com.servicedesk.domain.priority.WeightedPriorityStrategy;
 import com.servicedesk.domain.repository.AuditLogRepository;
 import com.servicedesk.domain.repository.IncidentFilter;
 import com.servicedesk.domain.repository.IncidentRepository;
@@ -106,7 +105,8 @@ public class IncidentApplicationService {
       List<NotificationChannel> notificationChannels,
       Clock clock,
       SlaPolicyProvider slaPolicies,
-      SpringDataItServiceJpaRepository serviceRepository) {
+      SpringDataItServiceJpaRepository serviceRepository,
+      PriorityCalculationStrategy priorityStrategy) {
     this.incidentRepository = incidentRepository;
     this.serviceRepository = serviceRepository;
     this.userRepository = userRepository;
@@ -116,7 +116,6 @@ public class IncidentApplicationService {
     this.userJpaRepository = userJpaRepository;
     this.notificationChannels = notificationChannels;
     this.clock = clock;
-    PriorityCalculationStrategy priorityStrategy = new WeightedPriorityStrategy();
     this.incidentFactory =
         new IncidentFactory(
             priorityStrategy, clock, incidentJpaRepository::nextIncidentNumber, slaPolicies);
@@ -797,7 +796,8 @@ public class IncidentApplicationService {
         filter != null ? filter : new IncidentFilter(null, null, null, null, null, null, null);
     return switch (requester.getRole()) {
       case ADMINISTRATOR, ROOT -> base;
-      case TECHNICIAN -> base.withAssignee(requester.getId());
+        // A technician's worklist: tickets assigned to them, plus any they reported themselves.
+      case TECHNICIAN -> base.withParticipant(requester.getId());
       case EMPLOYEE -> base.withReporter(requester.getId());
     };
   }
