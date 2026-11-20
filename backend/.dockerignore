@@ -35,3 +35,6 @@ jacoco.exec
 
 # Documentation & Markdown
 *.md
+
+# Claude Code local state (worktrees, settings)
+.claude/

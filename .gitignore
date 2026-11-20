@@ -87,3 +87,6 @@ copilot-instructions.md
 .cursorrules
 .windsurfrules
 .clinerules
+
+# Claude Code local state (worktrees, settings)
+.claude/

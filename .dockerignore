@@ -52,3 +52,6 @@ jacoco.exec
 docs/
 scripts/
 *.md
+
+# Claude Code local state (worktrees, settings)
+.claude/
