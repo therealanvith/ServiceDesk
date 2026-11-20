@@ -9,12 +9,13 @@ import {
   type Impact,
   type ItService,
   type PriorityPreview,
+  type ServiceStatus,
   type SimilarIncident,
   type TriageSuggestion,
   type Urgency,
   api,
 } from "@/lib/apiClient";
-import { CATEGORY_LABELS, CRITICALITY_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, CRITICALITY_LABELS, SERVICE_HEALTH_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -45,6 +46,8 @@ export default function NewIncidentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [relatedNumber, setRelatedNumber] = useState<string | null>(null);
+  const [relatedId, setRelatedId] = useState<string | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
   const [triage, setTriage] = useState<TriageSuggestion | null>(null);
 
   // "This affects me too" on All issues opens this page pre-filled with a reference to the issue.
@@ -54,6 +57,7 @@ export default function NewIncidentPage() {
     if (!related) return;
     const relatedTitle = params.get("title") ?? "";
     setRelatedNumber(related);
+    setRelatedId(params.get("relatedId"));
     setTitle(relatedTitle);
     setDescription(`I'm affected by the same problem as ${related}${relatedTitle ? ` (${relatedTitle})` : ""}.
 
@@ -74,6 +78,15 @@ export default function NewIncidentPage() {
       .then(setServices)
       .catch(() => setServicesFailed(true));
   }, [user, servicesKey]);
+
+  // Known problems on a service: the reporter can check them before adding another ticket.
+  useEffect(() => {
+    if (!user) return;
+    api
+      .getServiceStatus()
+      .then(setServiceStatus)
+      .catch(() => {});
+  }, [user]);
 
   // The server owns the priority policy; ask it whenever an input changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey re-runs the request for "Try again"
@@ -122,6 +135,9 @@ export default function NewIncidentPage() {
   }, [title, description, user, categoryTouched]);
 
   const service = services.find((s) => s.id === serviceId);
+  const affected = serviceStatus.find(
+    (s) => s.serviceId === serviceId && s.status !== "OPERATIONAL"
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,6 +163,7 @@ export default function NewIncidentPage() {
           triage.impact === impact &&
           triage.urgency === urgency &&
           (triage.serviceId ?? "") === serviceId,
+        relatedIncidentId: relatedId ?? undefined,
       });
       router.push(`/incidents/${created.id}`);
     } catch (err: unknown) {
@@ -170,7 +187,9 @@ export default function NewIncidentPage() {
           <h1>Report an issue</h1>
           <p>
             {relatedNumber
-              ? `Your report will mention ${relatedNumber} so staff can see it affects you too.`
+              ? relatedId
+                ? `Your report will be linked to ${relatedNumber} so you hear when it’s fixed.`
+                : `Your report will mention ${relatedNumber} so staff can see it affects you too.`
               : "The more detail you give, the faster it gets fixed."}
           </p>
         </div>
@@ -262,6 +281,22 @@ export default function NewIncidentPage() {
               </span>
             )}
           </label>
+          {affected && (
+            <output className="callout callout-warn known-issue">
+              <p className="callout-title">Known issue on {affected.name}</p>
+              <p className="field-hint">
+                {SERVICE_HEALTH_LABELS[affected.status]} · {affected.openTickets} open ticket
+                {affected.openTickets === 1 ? "" : "s"}.{" "}
+                <Link
+                  href={`/issues?${new URLSearchParams({ serviceId: affected.serviceId })}`}
+                  className="link"
+                >
+                  See reported issues
+                </Link>{" "}
+                before opening a new one.
+              </p>
+            </output>
+          )}
 
           <div className="field-row">
             <label className="field">

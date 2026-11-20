@@ -2,6 +2,7 @@
 
 import { AssistantPanel } from "@/components/AssistantPanel";
 import { AuditTimeline } from "@/components/AuditTimeline";
+import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
 import { SlaBadge } from "@/components/SlaBadge";
@@ -60,9 +61,8 @@ export default function IncidentDetailPage() {
     if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
   }, [incidentId, user]);
 
-  // Someone else changed this ticket: show the new state without blanking the page.
-  useLiveEvent((e) => {
-    if (e.event !== "incident-updated" || e.data.incidentId !== incidentId) return;
+  // Shows the latest state without blanking the page.
+  const refresh = useCallback(() => {
     api
       .getIncident(incidentId)
       .then((inc) => {
@@ -70,7 +70,37 @@ export default function IncidentDetailPage() {
         return loadPanels();
       })
       .catch(() => {});
+  }, [incidentId, loadPanels]);
+
+  // Someone else changed this ticket, or a ticket linked under it (its list shows their status).
+  useLiveEvent((e) => {
+    if (e.event !== "incident-updated" || !incident) return;
+    const { incidentId: changed } = e.data;
+    if (
+      changed === incidentId ||
+      changed === incident.parentIncident?.id ||
+      incident.childIncidents.some((c) => c.id === changed)
+    ) {
+      refresh();
+    }
   });
+
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  const unlink = async () => {
+    setUnlinking(true);
+    setUnlinkError(null);
+    try {
+      const updated = await api.unlinkIncident(incidentId);
+      setIncident(updated);
+      loadPanels();
+      showToast({ title: "Ticket unlinked", tone: "success" });
+    } catch (err: unknown) {
+      setUnlinkError(err instanceof Error ? err.message : "Couldn’t unlink this ticket");
+    } finally {
+      setUnlinking(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -131,6 +161,8 @@ export default function IncidentDetailPage() {
   const currentUserRole = user?.role ?? "EMPLOYEE";
   const isPaused = incident.status === "PENDING_INFO";
   const sla = incident.slaWindow;
+  const parent = incident.parentIncident;
+  const children = incident.childIncidents ?? [];
 
   return (
     <>
@@ -139,7 +171,10 @@ export default function IncidentDetailPage() {
         <span aria-hidden="true">/</span>
         <span className="mono">{incident.incidentNumber}</span>
       </nav>
-      <h1 className="detail-title">{incident.title}</h1>
+      <div className="detail-title-row">
+        <h1 className="detail-title">{incident.title}</h1>
+        {children.length > 0 && <span className="tag tag-major">Major incident</span>}
+      </div>
       <p className="detail-sub">
         Opened by {incident.reporter.fullName}{" "}
         <time dateTime={incident.createdAt} title={new Date(incident.createdAt).toLocaleString()}>
@@ -149,6 +184,28 @@ export default function IncidentDetailPage() {
 
       <div className="detail">
         <div className="stack">
+          {parent && (
+            <div className="callout callout-neutral linked-parent">
+              <p>
+                Part of{" "}
+                <Link href={`/incidents/${parent.id}`} className="link mono">
+                  {parent.incidentNumber}
+                </Link>
+                : {parent.title} <StatusBadge status={parent.status} />
+              </p>
+              {isAdmin(currentUserRole) && (
+                <button type="button" className="btn btn-sm" disabled={unlinking} onClick={unlink}>
+                  {unlinking ? "Unlinking…" : "Unlink"}
+                </button>
+              )}
+              {unlinkError && (
+                <p className="field-hint text-red" role="alert">
+                  {unlinkError}
+                </p>
+              )}
+            </div>
+          )}
+
           <section className="card card-body stack" aria-label="Description">
             <p className="description">{incident.description}</p>
             {incident.resolutionNotes && (
@@ -167,7 +224,40 @@ export default function IncidentDetailPage() {
             )}
           </section>
 
-          {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
+          {children.length > 0 && (
+            <section className="card" aria-labelledby="linked-title">
+              <div className="card-header">
+                <h2 id="linked-title">Linked tickets ({children.length})</h2>
+                <span className="hint">Resolved together with this one</span>
+              </div>
+              <ul className="similar-list">
+                {children.map((child) => (
+                  <li key={child.id} className="similar-item">
+                    <div className="similar-head">
+                      <Link href={`/incidents/${child.id}`} className="mono link">
+                        {child.incidentNumber}
+                      </Link>
+                      <span className="title">{child.title}</span>
+                      <StatusBadge status={child.status} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {currentUserRole !== "EMPLOYEE" && (
+            <SimilarIncidentsPanel
+              incidentId={incident.id}
+              canLink={
+                isAdmin(currentUserRole) &&
+                !parent &&
+                children.length === 0 &&
+                !["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status)
+              }
+              onLinked={refresh}
+            />
+          )}
           {currentUserRole !== "EMPLOYEE" && (
             <AssistantPanel
               incidentId={incident.id}

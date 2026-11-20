@@ -83,6 +83,14 @@ export interface ItService {
   active: boolean;
 }
 
+/** A ticket on either end of a major-incident link. */
+export interface LinkedIncident {
+  id: string;
+  incidentNumber: string;
+  title: string;
+  status: IncidentStatus;
+}
+
 export interface IncidentDetail {
   id: string;
   incidentNumber: string;
@@ -105,6 +113,10 @@ export interface IncidentDetail {
   escalationLevel: EscalationLevel;
   feedbackRating: number | null;
   feedbackComment: string | null;
+  /** The major incident this ticket is part of, if any. */
+  parentIncident: LinkedIncident | null;
+  /** Tickets linked under this one when it is a major incident. */
+  childIncidents: LinkedIncident[];
 }
 
 export interface IncidentSummary {
@@ -242,6 +254,18 @@ export interface UserAccount {
   passwordSignIn: boolean;
   googleSignIn: boolean;
   createdAt: string;
+}
+
+export type ServiceHealth = "OPERATIONAL" | "DEGRADED" | "OUTAGE";
+
+/** Counts only, so every signed-in user can see it. */
+export interface ServiceStatus {
+  serviceId: string;
+  name: string;
+  criticality: Criticality;
+  status: ServiceHealth;
+  openTickets: number;
+  openMajorIncidents: number;
 }
 
 export interface PriorityPreview {
@@ -496,6 +520,7 @@ export const api = {
     apiClient<ItService>("/catalog/services", post(data)),
   updateService: (id: string, data: Omit<ItService, "id">) =>
     apiClient<ItService>(`/catalog/services/${id}`, put(data)),
+  getServiceStatus: () => apiClient<ServiceStatus[]>("/catalog/service-status"),
   listSlaPolicies: () => apiClient<SlaPolicy[]>("/catalog/sla-policies"),
   previewPriority: (impact: Impact, urgency: Urgency, serviceId?: string) =>
     apiClient<PriorityPreview>(
@@ -516,6 +541,8 @@ export const api = {
     urgency: Urgency;
     serviceId?: string;
     aiSuggestionAccepted?: boolean;
+    /** Set from "This affects me too": the open issue this report joins. */
+    relatedIncidentId?: string;
   }) => apiClient<IncidentDetail>("/incidents", post(data)),
 
   // Assistant (Gemini, or built-in rules when it isn't configured)
@@ -560,6 +587,9 @@ export const api = {
     apiClient<IncidentDetail>(`/incidents/${id}/close`, post(feedback ?? {})),
   cancelIncident: (id: string, reason: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/cancel`, post({ reason })),
+  linkIncident: (id: string, parentId: string) =>
+    apiClient<IncidentDetail>(`/incidents/${id}/link`, post({ parentId })),
+  unlinkIncident: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/unlink`, post()),
   overridePriority: (id: string, priority: Priority, remarks: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/priority`, put({ priority, remarks })),
 

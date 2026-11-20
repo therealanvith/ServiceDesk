@@ -1499,6 +1499,127 @@ output.empty {
   text-decoration: underline;
 }
 
+/* ---------- Major incidents and service status ---------- */
+
+.detail-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 4px;
+}
+
+.detail-title-row .detail-title {
+  margin-bottom: 0;
+}
+
+.tag-major {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.linked-parent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+
+.linked-parent > p:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.linked-parent .field-hint {
+  flex-basis: 100%;
+}
+
+/* Room for "Link as duplicate" without overflowing at phone width. */
+.similar-head {
+  flex-wrap: wrap;
+}
+
+.similar-head .title {
+  flex: 1 1 160px;
+}
+
+.known-issue .field-hint {
+  color: var(--ink-2);
+}
+
+.status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  font-weight: 600;
+  color: var(--green);
+}
+
+.status-summary.is-affected {
+  border-left-color: var(--amber);
+  color: var(--amber);
+}
+
+.status-summary .muted {
+  font-weight: 400;
+}
+
+.table .col-num {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Service health chip: colour plus a text label, never colour alone. */
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--health-line);
+  border-radius: 999px;
+  background: var(--health-soft);
+  color: var(--health);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.health::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.health-operational {
+  --health: var(--green);
+  --health-soft: var(--green-soft);
+  --health-line: var(--green-line);
+}
+
+.health-degraded {
+  --health: var(--amber);
+  --health-soft: var(--amber-soft);
+  --health-line: var(--amber-line);
+}
+
+.health-outage {
+  --health: var(--red);
+  --health-soft: var(--red-soft);
+  --health-line: var(--red-line);
+}
+
 .input-narrow {
   width: 110px;
 }
