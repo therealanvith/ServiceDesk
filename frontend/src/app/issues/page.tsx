@@ -41,6 +41,12 @@ export default function IssuesPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, PublicIssue | "error">>({});
 
+  // Links such as "Known issue on <service>" from the report form open this list filtered.
+  useEffect(() => {
+    const serviceId = new URLSearchParams(window.location.search).get("serviceId");
+    if (serviceId) setFilters((f) => ({ ...f, serviceId }));
+  }, []);
+
   useEffect(() => {
     if (user)
       api
@@ -229,6 +235,7 @@ export default function IssuesPage() {
                                 className="btn btn-sm"
                                 href={`/incidents/new?${new URLSearchParams({
                                   related: detail.incidentNumber,
+                                  relatedId: detail.id,
                                   title: detail.title,
                                   category: detail.category,
                                 })}`}

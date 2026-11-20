@@ -5,6 +5,7 @@ import type {
   IncidentStatus,
   Priority,
   Role,
+  ServiceHealth,
   SlaStatus,
 } from "@/lib/apiClient";
 
@@ -52,6 +53,12 @@ export const CRITICALITY_LABELS: Record<Criticality, string> = {
   LOW: "Low",
 };
 
+export const SERVICE_HEALTH_LABELS: Record<ServiceHealth, string> = {
+  OPERATIONAL: "Operational",
+  DEGRADED: "Degraded",
+  OUTAGE: "Outage",
+};
+
 export const SLA_LABELS: Record<SlaStatus, string> = {
   WITHIN_SLA: "On track",
   WARNING_BREACH_IMMINENT: "At risk",
@@ -89,6 +96,8 @@ const AUDIT_LABELS: Record<string, string> = {
   SLA_BREACHED: "SLA target missed",
   COMMENTED: "commented",
   ESCALATED: "escalated: no response in time",
+  LINKED: "linked the ticket",
+  UNLINKED: "unlinked the ticket",
 };
 
 export function auditLabel(action: string): string {

@@ -50,6 +50,7 @@ export function Navbar() {
               : "My tickets",
         },
         { href: "/issues", label: "All issues" },
+        { href: "/status", label: "Service status" },
         { href: "/incidents/new", label: "Report an issue" },
         ...(isAdmin(user.role)
           ? [
