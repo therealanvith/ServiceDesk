@@ -1,6 +1,7 @@
 package com.servicedesk.infrastructure.persistence.repository;
 
 import com.servicedesk.infrastructure.persistence.entity.IncidentAuditLogEntity;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,4 +15,7 @@ public interface SpringDataAuditLogJpaRepository
 
   List<IncidentAuditLogEntity> findAllByOrderByCreatedAtDesc(
       org.springframework.data.domain.Pageable pageable);
+
+  List<IncidentAuditLogEntity> findByActionAndCreatedAtGreaterThanEqual(
+      String action, Instant since);
 }

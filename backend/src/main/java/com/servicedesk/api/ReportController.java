@@ -2,6 +2,7 @@ package com.servicedesk.api;
 
 import com.servicedesk.api.dto.AuditLogResponse;
 import com.servicedesk.api.dto.ReportResponse;
+import com.servicedesk.api.dto.TrendsResponse;
 import com.servicedesk.api.dto.WorkloadResponse;
 import com.servicedesk.application.IncidentApplicationService;
 import com.servicedesk.application.ReportApplicationService;
@@ -30,6 +31,13 @@ public class ReportController {
   @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<ReportResponse> overview(Principal principal) {
     return ResponseEntity.ok(reports.overview(principal.getName()));
+  }
+
+  @GetMapping("/trends")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<TrendsResponse> trends(
+      @RequestParam(defaultValue = "30") int days, Principal principal) {
+    return ResponseEntity.ok(reports.trends(days, principal.getName()));
   }
 
   @GetMapping("/my-workload")
