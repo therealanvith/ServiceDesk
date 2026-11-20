@@ -4,6 +4,7 @@ import com.servicedesk.api.dto.ErrorResponse;
 import com.servicedesk.domain.exception.DomainValidationException;
 import com.servicedesk.domain.exception.IncidentNotFoundException;
 import com.servicedesk.domain.exception.InvalidStateTransitionException;
+import com.servicedesk.domain.exception.TechnicianWorkloadExceededException;
 import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +38,12 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(InvalidStateTransitionException.class)
   public ResponseEntity<ErrorResponse> handleInvalidStateTransition(
       InvalidStateTransitionException ex, HttpServletRequest request) {
+    return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
+  }
+
+  @ExceptionHandler(TechnicianWorkloadExceededException.class)
+  public ResponseEntity<ErrorResponse> handleWorkloadExceeded(
+      TechnicianWorkloadExceededException ex, HttpServletRequest request) {
     return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
   }
 

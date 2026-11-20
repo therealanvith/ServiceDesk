@@ -12,6 +12,11 @@ public interface IncidentState {
     throw new InvalidStateTransitionException("Cannot assign incident in state: " + getStatus());
   }
 
+  default void acknowledge(Incident context, UserId technicianId) {
+    throw new InvalidStateTransitionException(
+        "Cannot acknowledge incident in state: " + getStatus());
+  }
+
   default void startWork(Incident context, UserId technicianId) {
     throw new InvalidStateTransitionException(
         "Cannot start work on incident in state: " + getStatus());

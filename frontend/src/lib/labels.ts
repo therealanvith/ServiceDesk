@@ -1,6 +1,7 @@
 import type {
   Category,
   Criticality,
+  EscalationLevel,
   IncidentStatus,
   Priority,
   Role,
@@ -10,11 +11,19 @@ import type {
 export const STATUS_LABELS: Record<IncidentStatus, string> = {
   REPORTED: "Reported",
   ASSIGNED: "Assigned",
+  ACKNOWLEDGED: "Acknowledged",
   IN_PROGRESS: "In progress",
   PENDING_INFO: "Waiting on reporter",
   RESOLVED: "Resolved",
   CLOSED: "Closed",
   CANCELLED: "Cancelled",
+};
+
+export const ESCALATION_LABELS: Record<EscalationLevel, string> = {
+  NONE: "Not escalated",
+  TEAM_LEAD: "Escalated to the team lead",
+  ADMINISTRATOR: "Escalated to administrators",
+  IT_MANAGER: "Escalated to the IT manager",
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {

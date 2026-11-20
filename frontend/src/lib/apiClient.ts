@@ -30,6 +30,7 @@ export type Criticality = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type IncidentStatus =
   | "REPORTED"
   | "ASSIGNED"
+  | "ACKNOWLEDGED"
   | "IN_PROGRESS"
   | "PENDING_INFO"
   | "RESOLVED"
@@ -99,6 +100,7 @@ export interface IncidentDetail {
   service: ItService | null;
   respondedAt: string | null;
   escalatedAt: string | null;
+  escalationLevel: EscalationLevel;
   feedbackRating: number | null;
   feedbackComment: string | null;
 }
@@ -191,6 +193,8 @@ export interface CategorySuggestion {
   matchedKeywords: string[];
 }
 
+export type EscalationLevel = "NONE" | "TEAM_LEAD" | "ADMINISTRATOR" | "IT_MANAGER";
+
 export interface TechnicianItem {
   id: string;
   username: string;
@@ -199,6 +203,8 @@ export interface TechnicianItem {
   skills: Category[];
   activeTicketsCount: number;
   available: boolean;
+  maxActiveTickets: number;
+  teamLead: boolean;
 }
 
 export interface UserAccount {
@@ -426,6 +432,8 @@ export const api = {
   listTechnicians: () => apiClient<TechnicianItem[]>("/users/technicians"),
   updateTechnicianSkills: (id: string, skills: Category[]) =>
     apiClient<TechnicianItem>(`/users/${id}/skills`, put({ skills })),
+  updateCapacity: (id: string, maxActiveTickets: number, teamLead: boolean) =>
+    apiClient<TechnicianItem>(`/users/${id}/capacity`, put({ maxActiveTickets, teamLead })),
   listUsers: () => apiClient<UserAccount[]>("/users"),
   createUser: (data: {
     username: string;
@@ -487,6 +495,7 @@ export const api = {
       `/incidents/${id}/assign`,
       post(technicianId ? { technicianId } : {})
     ),
+  acknowledge: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/acknowledge`, post()),
   startWork: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/start`, post()),
   requestInfo: (id: string, question: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/request-info`, post({ question })),

@@ -21,6 +21,7 @@ import com.servicedesk.api.dto.SimilarIncidentResponse;
 import com.servicedesk.api.dto.SlaWindowResponse;
 import com.servicedesk.api.dto.UserSummaryResponse;
 import com.servicedesk.domain.assignment.AssignmentStrategy;
+import com.servicedesk.domain.assignment.CapacityAwareAssignmentStrategy;
 import com.servicedesk.domain.assignment.LeastLoadedAssignmentStrategy;
 import com.servicedesk.domain.assignment.RoundRobinAssignmentStrategy;
 import com.servicedesk.domain.assignment.SkillMatchAssignmentStrategy;
@@ -31,7 +32,7 @@ import com.servicedesk.domain.event.IncidentAssignedEvent;
 import com.servicedesk.domain.event.IncidentCreatedEvent;
 import com.servicedesk.domain.event.IncidentStatusChangedEvent;
 import com.servicedesk.domain.exception.IncidentNotFoundException;
-import com.servicedesk.domain.exception.InvalidStateTransitionException;
+import com.servicedesk.domain.exception.TechnicianWorkloadExceededException;
 import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import com.servicedesk.domain.incident.Incident;
@@ -123,7 +124,8 @@ public class IncidentApplicationService {
     this.categorySuggester = new KeywordCategoryClassifier();
     this.eventPublisher = new DomainEventPublisher();
     this.similarityStrategy = new JaccardSimilarityStrategy();
-    this.currentAssignmentStrategy = new SkillMatchAssignmentStrategy();
+    this.currentAssignmentStrategy =
+        new CapacityAwareAssignmentStrategy(new SkillMatchAssignmentStrategy());
   }
 
   public IncidentDetailResponse createIncident(
@@ -205,6 +207,13 @@ public class IncidentApplicationService {
       eventPublisher.publish(
           new IncidentAssignedEvent(
               incident.getId(), tech.getId(), reporter.getId(), clock.instant()));
+    } else if (technicians.stream().anyMatch(User::isAvailable)) {
+      notifyAdmins(
+          incident,
+          "UNASSIGNED",
+          "No technician has room for " + incident.getIncidentNumber(),
+          "Every available technician is at their ticket limit. Assign it manually or raise a"
+              + " limit under Settings.");
     }
 
     Incident saved = incidentRepository.save(incident);
@@ -242,6 +251,13 @@ public class IncidentApplicationService {
       if (tech.getRole() != Role.TECHNICIAN || !tech.isAvailable()) {
         throw new IllegalArgumentException("Select an active technician for assignment");
       }
+      if (!tech.getId().equals(incident.getAssigneeId()) && !tech.hasCapacity()) {
+        throw new TechnicianWorkloadExceededException(
+            tech.getFullName()
+                + " already has "
+                + tech.getActiveTicketsCount()
+                + " open tickets, their limit. Choose someone else or raise the limit.");
+      }
       targetTechId = tech.getId();
       targetTechName = tech.getUsername();
     } else {
@@ -251,8 +267,8 @@ public class IncidentApplicationService {
               .selectTechnician(incident, technicians)
               .orElseThrow(
                   () ->
-                      new InvalidStateTransitionException(
-                          "No available technician for assignment"));
+                      new TechnicianWorkloadExceededException(
+                          "No available technician has room for another ticket"));
       targetTechId = selected.getId();
       targetTechName = selected.getUsername();
     }
@@ -284,6 +300,31 @@ public class IncidentApplicationService {
     return toDetailResponse(saved);
   }
 
+  /** The assigned technician accepts the ticket, which meets the response target. */
+  public IncidentDetailResponse acknowledge(UUID incidentId, String actorUsername) {
+    User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+    requireAssigneeOrAdmin(incident, actor, "acknowledge this incident");
+
+    IncidentStatus oldStatus = incident.getStatus();
+    incident.acknowledge(actor.getId());
+    incident.markResponded(clock.instant());
+    Incident saved = incidentRepository.save(incident);
+
+    recordStatusChange(
+        incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Acknowledged");
+    postUpdate(
+        incident.getId(), actor, UpdateKind.PICKUP, actor.getFullName() + " picked this up.");
+    notifyChannels(
+        NotificationMessage.of(
+            incident.getReporterId(),
+            incident.getId(),
+            "ACKNOWLEDGED",
+            "Picked up: " + incident.getIncidentNumber(),
+            actor.getFullName() + " is handling your ticket."));
+    return toDetailResponse(saved);
+  }
+
   public IncidentDetailResponse startWork(UUID incidentId, String actorUsername) {
     User actor = loadUser(actorUsername);
     Incident incident = loadVisibleIncident(incidentId, actor);
@@ -301,11 +342,14 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Work started by technician");
-    postUpdate(
-        incident.getId(),
-        actor,
-        UpdateKind.PICKUP,
-        actor.getFullName() + " picked this up and is working on it.");
+    // Skipping the acknowledge step still tells the reporter someone has it.
+    if (oldStatus == IncidentStatus.ASSIGNED) {
+      postUpdate(
+          incident.getId(),
+          actor,
+          UpdateKind.PICKUP,
+          actor.getFullName() + " picked this up and is working on it.");
+    }
     return toDetailResponse(saved);
   }
 
@@ -762,15 +806,18 @@ public class IncidentApplicationService {
   public void updateAssignmentStrategy(String strategyName) {
     switch (strategyName.toUpperCase()) {
       case "ROUND_ROBIN" -> {
-        this.currentAssignmentStrategy = new RoundRobinAssignmentStrategy();
+        this.currentAssignmentStrategy =
+            new CapacityAwareAssignmentStrategy(new RoundRobinAssignmentStrategy());
         this.currentAssignmentStrategyName = "ROUND_ROBIN";
       }
       case "LEAST_LOADED" -> {
-        this.currentAssignmentStrategy = new LeastLoadedAssignmentStrategy();
+        this.currentAssignmentStrategy =
+            new CapacityAwareAssignmentStrategy(new LeastLoadedAssignmentStrategy());
         this.currentAssignmentStrategyName = "LEAST_LOADED";
       }
       case "SKILL_MATCH" -> {
-        this.currentAssignmentStrategy = new SkillMatchAssignmentStrategy();
+        this.currentAssignmentStrategy =
+            new CapacityAwareAssignmentStrategy(new SkillMatchAssignmentStrategy());
         this.currentAssignmentStrategyName = "SKILL_MATCH";
       }
       default -> throw new IllegalArgumentException("Unknown assignment strategy: " + strategyName);
@@ -815,6 +862,15 @@ public class IncidentApplicationService {
 
     eventPublisher.publish(
         new IncidentStatusChangedEvent(incidentId, oldStatus, newStatus, actorId, clock.instant()));
+  }
+
+  private void notifyAdmins(Incident incident, String type, String title, String body) {
+    userRepository.findAll().stream()
+        .filter(u -> u.getRole().hasAdminRights() && u.isAvailable())
+        .forEach(
+            admin ->
+                notifyChannels(
+                    NotificationMessage.of(admin.getId(), incident.getId(), type, title, body)));
   }
 
   private void notifyChannels(NotificationMessage message) {
@@ -944,7 +1000,8 @@ public class IncidentApplicationService {
         incident.getRespondedAt(),
         incident.getEscalatedAt(),
         incident.getFeedbackRating(),
-        incident.getFeedbackComment());
+        incident.getFeedbackComment(),
+        incident.getEscalationLevel());
   }
 
   private ServiceResponse toServiceResponse(ItServiceEntity s) {

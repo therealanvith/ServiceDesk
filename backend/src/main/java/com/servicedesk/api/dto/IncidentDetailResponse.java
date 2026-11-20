@@ -1,5 +1,6 @@
 package com.servicedesk.api.dto;
 
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.IncidentStatus;
@@ -28,4 +29,5 @@ public record IncidentDetailResponse(
     Instant respondedAt,
     Instant escalatedAt,
     Integer feedbackRating,
-    String feedbackComment) {}
+    String feedbackComment,
+    EscalationLevel escalationLevel) {}

@@ -420,6 +420,21 @@ public class UserApplicationService {
     return toTechnicianResponse(saved);
   }
 
+  /** Sets how many open tickets a technician may hold and whether they lead the team. */
+  public TechnicianResponse updateTechnicianCapacity(
+      UUID technicianId, int maxActiveTickets, boolean teamLead) {
+    UserEntity user =
+        userJpaRepository
+            .findById(technicianId)
+            .orElseThrow(() -> new UserNotFoundException("Technician not found: " + technicianId));
+    if (user.getRole() != Role.TECHNICIAN) {
+      throw new IllegalArgumentException("Capacity can only be set for technicians");
+    }
+    user.setMaxActiveTickets(maxActiveTickets);
+    user.setTeamLead(teamLead);
+    return toTechnicianResponse(userJpaRepository.save(user));
+  }
+
   private UserProfileResponse toProfileResponse(UserEntity user) {
     Set<Category> skills =
         user.getSkills().stream().map(UserSkillEntity::getCategory).collect(Collectors.toSet());
@@ -441,7 +456,7 @@ public class UserApplicationService {
 
     int activeTickets =
         incidentJpaRepository.countByAssigneeIdAndStatusNotIn(
-            tech.getId(), Set.of(IncidentStatus.CLOSED, IncidentStatus.CANCELLED));
+            tech.getId(), IncidentStatus.notWorkload());
 
     return new TechnicianResponse(
         tech.getId(),
@@ -450,6 +465,8 @@ public class UserApplicationService {
         tech.getEmail(),
         skills,
         activeTickets,
-        tech.isActive());
+        tech.isActive(),
+        tech.getMaxActiveTickets(),
+        tech.isTeamLead());
   }
 }

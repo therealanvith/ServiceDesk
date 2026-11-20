@@ -11,4 +11,6 @@ public record TechnicianResponse(
     String email,
     Set<Category> skills,
     int activeTicketsCount,
-    boolean available) {}
+    boolean available,
+    int maxActiveTickets,
+    boolean teamLead) {}

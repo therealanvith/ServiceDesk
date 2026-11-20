@@ -95,7 +95,7 @@ public class JpaUserRepositoryAdapter implements UserRepository {
 
     int activeTickets =
         incidentJpaRepository.countByAssigneeIdAndStatusNotIn(
-            entity.getId(), Set.of(IncidentStatus.CLOSED, IncidentStatus.CANCELLED));
+            entity.getId(), IncidentStatus.notWorkload());
 
     return new User(
         UserId.of(entity.getId()),
@@ -105,6 +105,8 @@ public class JpaUserRepositoryAdapter implements UserRepository {
         entity.getRole(),
         skills,
         activeTickets,
-        entity.isActive());
+        entity.isActive(),
+        entity.getMaxActiveTickets(),
+        entity.isTeamLead());
   }
 }

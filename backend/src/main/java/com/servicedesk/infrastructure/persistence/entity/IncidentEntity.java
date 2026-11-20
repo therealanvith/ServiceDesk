@@ -1,5 +1,6 @@
 package com.servicedesk.infrastructure.persistence.entity;
 
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.IncidentStatus;
@@ -109,6 +110,18 @@ public class IncidentEntity {
 
   @Column(name = "escalated_at")
   private Instant escalatedAt;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "escalation_level", nullable = false, length = 20)
+  private EscalationLevel escalationLevel = EscalationLevel.NONE;
+
+  public EscalationLevel getEscalationLevel() {
+    return escalationLevel;
+  }
+
+  public void setEscalationLevel(EscalationLevel escalationLevel) {
+    this.escalationLevel = escalationLevel;
+  }
 
   @Column(name = "feedback_rating")
   @JdbcTypeCode(SqlTypes.SMALLINT) // 1-5 rating, stored as SMALLINT

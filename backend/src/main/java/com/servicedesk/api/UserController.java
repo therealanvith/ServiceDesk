@@ -4,6 +4,7 @@ import com.servicedesk.api.dto.ChangePasswordRequest;
 import com.servicedesk.api.dto.CreateUserRequest;
 import com.servicedesk.api.dto.GoogleSignInRequest;
 import com.servicedesk.api.dto.TechnicianResponse;
+import com.servicedesk.api.dto.UpdateCapacityRequest;
 import com.servicedesk.api.dto.UpdateSkillsRequest;
 import com.servicedesk.api.dto.UpdateUserActiveRequest;
 import com.servicedesk.api.dto.UpdateUserRoleRequest;
@@ -69,6 +70,14 @@ public class UserController {
       @PathVariable UUID id, @Valid @RequestBody UpdateSkillsRequest request) {
     TechnicianResponse updated = userService.updateTechnicianSkills(id, request.skills());
     return ResponseEntity.ok(updated);
+  }
+
+  @PutMapping("/{id}/capacity")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<TechnicianResponse> updateCapacity(
+      @PathVariable UUID id, @Valid @RequestBody UpdateCapacityRequest request) {
+    return ResponseEntity.ok(
+        userService.updateTechnicianCapacity(id, request.maxActiveTickets(), request.teamLead()));
   }
 
   // --- Account management (administrators and root) ---

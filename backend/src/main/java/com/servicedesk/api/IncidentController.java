@@ -131,6 +131,13 @@ public class IncidentController {
     return ResponseEntity.ok(response);
   }
 
+  @PostMapping("/{id}/acknowledge")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> acknowledge(
+      @PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(incidentService.acknowledge(id, principal.getName()));
+  }
+
   @PostMapping("/{id}/start")
   @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> startWork(

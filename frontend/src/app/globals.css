@@ -648,6 +648,14 @@ fieldset {
   --dot: var(--blue);
 }
 
+.status-acknowledged {
+  --dot: var(--blue);
+}
+
+.status-acknowledged::before {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 30%, transparent);
+}
+
 .status-in_progress {
   --dot: var(--amber);
 }

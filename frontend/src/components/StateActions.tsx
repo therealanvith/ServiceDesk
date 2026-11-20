@@ -154,6 +154,20 @@ export function StateActions({
     primary.push(btn("assign", "Assign", () => open("assign"), "btn-primary"));
   }
   if (status === "ASSIGNED" && canWork) {
+    // Acknowledging meets the response target; starting straight away also counts.
+    primary.push(
+      btn(
+        "acknowledge",
+        "Acknowledge",
+        () => handleAction(() => api.acknowledge(incident.id)),
+        "btn-primary"
+      )
+    );
+    secondary.push(
+      btn("start", "Start work", () => handleAction(() => api.startWork(incident.id)))
+    );
+  }
+  if (status === "ACKNOWLEDGED" && canWork) {
     primary.push(
       btn(
         "start",
@@ -183,13 +197,19 @@ export function StateActions({
       )
     );
   }
-  if ((status === "ASSIGNED" || status === "IN_PROGRESS") && isTechOrAdmin) {
+  if (
+    (status === "ASSIGNED" || status === "ACKNOWLEDGED" || status === "IN_PROGRESS") &&
+    isTechOrAdmin
+  ) {
     secondary.push(btn("reassign", "Reassign", () => open("assign")));
   }
   if (isAdmin && !terminal) {
     secondary.push(btn("override", "Change priority", () => open("override")));
   }
-  if ((status === "REPORTED" && (isReporter || isAdmin)) || (status === "ASSIGNED" && isAdmin)) {
+  if (
+    (status === "REPORTED" && (isReporter || isAdmin)) ||
+    ((status === "ASSIGNED" || status === "ACKNOWLEDGED") && isAdmin)
+  ) {
     secondary.push(btn("cancel", "Cancel ticket", () => open("cancel"), "btn-danger"));
   }
 

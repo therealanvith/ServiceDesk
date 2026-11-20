@@ -9,7 +9,13 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { UpdatesThread } from "@/components/UpdatesThread";
 import { useAuth } from "@/context/AuthContext";
 import { type AuditLogItem, type CommentItem, type IncidentDetail, api } from "@/lib/apiClient";
-import { CATEGORY_LABELS, CRITICALITY_LABELS, formatDateTime, timeAgo } from "@/lib/labels";
+import {
+  CATEGORY_LABELS,
+  CRITICALITY_LABELS,
+  ESCALATION_LABELS,
+  formatDateTime,
+  timeAgo,
+} from "@/lib/labels";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -215,7 +221,10 @@ export default function IncidentDetailPage() {
                 )}
                 {incident.escalatedAt && (
                   <span className="props-sub text-red">
-                    Escalated {formatDateTime(incident.escalatedAt)}
+                    {incident.escalationLevel !== "NONE"
+                      ? ESCALATION_LABELS[incident.escalationLevel]
+                      : "Escalated"}{" "}
+                    {formatDateTime(incident.escalatedAt)}
                   </span>
                 )}
               </dd>

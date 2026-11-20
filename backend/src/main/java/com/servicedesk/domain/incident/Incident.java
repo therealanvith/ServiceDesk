@@ -1,5 +1,6 @@
 package com.servicedesk.domain.incident;
 
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.state.IncidentState;
 import com.servicedesk.domain.incident.state.ReportedState;
 import com.servicedesk.domain.priority.Priority;
@@ -35,6 +36,7 @@ public class Incident {
   private UUID affectedServiceId;
   private Instant respondedAt;
   private Instant escalatedAt;
+  private EscalationLevel escalationLevel = EscalationLevel.NONE;
   private Integer feedbackRating;
   private String feedbackComment;
   private Clock clock;
@@ -77,6 +79,11 @@ public class Incident {
 
   public void assign(UserId technicianId, UserId actorId) {
     this.currentState.assign(this, technicianId, actorId);
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  public void acknowledge(UserId technicianId) {
+    this.currentState.acknowledge(this, technicianId);
     this.updatedAt = getCurrentClockTime();
   }
 
@@ -304,6 +311,18 @@ public class Incident {
 
   public void setEscalatedAt(Instant escalatedAt) {
     this.escalatedAt = escalatedAt;
+  }
+
+  public EscalationLevel getEscalationLevel() {
+    return escalationLevel;
+  }
+
+  /** Records a new escalation level; the first escalation also stamps {@code escalatedAt}. */
+  public void escalateTo(EscalationLevel level, Instant at) {
+    this.escalationLevel = Objects.requireNonNull(level, "Escalation level must not be null");
+    if (this.escalatedAt == null && level != EscalationLevel.NONE) {
+      this.escalatedAt = at;
+    }
   }
 
   public Integer getFeedbackRating() {
