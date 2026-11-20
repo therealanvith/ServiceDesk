@@ -1,7 +1,10 @@
 package com.servicedesk.infrastructure.persistence.entity;
 
+import com.servicedesk.domain.incident.UpdateKind;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -31,6 +34,18 @@ public class IncidentCommentEntity {
 
   @Column(name = "is_internal", nullable = false)
   private boolean internal = false;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "kind", nullable = false, length = 20)
+  private UpdateKind kind = UpdateKind.COMMENT;
+
+  public UpdateKind getKind() {
+    return kind;
+  }
+
+  public void setKind(UpdateKind kind) {
+    this.kind = kind;
+  }
 
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;

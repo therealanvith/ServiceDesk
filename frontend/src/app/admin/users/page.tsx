@@ -25,6 +25,7 @@ export default function UsersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const [onlyNew, setOnlyNew] = useState(false);
 
   const isRoot = user?.role === "ROOT";
   // Administrators manage employees and technicians; root can also grant administrator access.
@@ -110,9 +111,14 @@ export default function UsersPage() {
   }
 
   const q = query.trim().toLowerCase();
+  // Accounts from the last week are flagged so an administrator can review their role.
+  const newSince = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const isNew = (a: UserAccount) => new Date(a.createdAt).getTime() >= newSince;
+  const newCount = (accounts ?? []).filter(isNew).length;
   const visible = (accounts ?? []).filter(
     (a) =>
-      !q || a.username.includes(q) || a.fullName.toLowerCase().includes(q) || a.email?.includes(q)
+      (!onlyNew || isNew(a)) &&
+      (!q || a.username.includes(q) || a.fullName.toLowerCase().includes(q) || a.email?.includes(q))
   );
 
   return (
@@ -149,6 +155,14 @@ export default function UsersPage() {
               style={{ paddingLeft: 10 }}
             />
           </label>
+          <button
+            type="button"
+            className={`btn btn-sm ${onlyNew ? "is-active" : ""}`}
+            aria-pressed={onlyNew}
+            onClick={() => setOnlyNew(!onlyNew)}
+          >
+            New this week{newCount > 0 && <span className="count">{newCount}</span>}
+          </button>
         </div>
         {loadFailed ? (
           <div className="empty" role="alert">
@@ -179,9 +193,17 @@ export default function UsersPage() {
                 {visible.map((a) => {
                   const manageable = canManage(a);
                   return (
-                    <tr key={a.id} className={a.active ? undefined : "is-inactive"}>
+                    <tr
+                      key={a.id}
+                      className={
+                        [!a.active && "is-inactive", isNew(a) && "is-new"]
+                          .filter(Boolean)
+                          .join(" ") || undefined
+                      }
+                    >
                       <td>
                         {a.fullName}
+                        {isNew(a) && <span className="tag new-tag">New</span>}
                         <span className="props-sub">
                           <span className="mono">{a.username}</span>
                           {a.email && ` · ${a.email}`}

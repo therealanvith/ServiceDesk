@@ -1862,6 +1862,125 @@ li.is-inactive {
   }
 }
 
+/* ---------- Updates thread ---------- */
+
+.update-tag {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.update-tag-question {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.update-tag-resolution {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.update-tag-pickup {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.comment.update-status .comment-body {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.comment.update-resolution {
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.comment.update-question {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.pinned-question {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--amber-soft);
+}
+
+.pinned-question .callout-title {
+  color: var(--amber);
+}
+
+/* ---------- All issues ---------- */
+
+.issue-list {
+  list-style: none;
+}
+
+.issue-list > li {
+  border-bottom: 1px solid var(--line);
+}
+
+.issue-list > li:last-child {
+  border-bottom: 0;
+}
+
+.issue-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+}
+
+.issue-row:hover,
+.is-open > .issue-row {
+  background: var(--surface-2);
+}
+
+.issue-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-meta {
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.issue-detail {
+  display: grid;
+  gap: 10px;
+  padding: 4px 16px 16px;
+  background: var(--surface-2);
+}
+
+.issue-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.issue-detail .comments {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (max-width: 720px) {
+  .issue-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 960px) {
@@ -1937,4 +2056,20 @@ li.is-inactive {
   .aside {
     top: auto;
   }
+}
+
+/* Accounts created in the last week, waiting for an administrator to review their role. */
+.table tr.is-new td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.new-tag {
+  margin-left: 6px;
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
 }

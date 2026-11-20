@@ -47,6 +47,7 @@ export function Navbar() {
               ? "My queue"
               : "My tickets",
         },
+        { href: "/issues", label: "All issues" },
         { href: "/incidents/new", label: "Report an issue" },
         ...(isAdmin(user.role)
           ? [

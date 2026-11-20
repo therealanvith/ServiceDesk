@@ -24,6 +24,7 @@ what a role can't do, but never relies on that.
 | Report an issue, comment, reply to questions on own tickets | ✓ | ✓ | ✓ | ✓ |
 | See tickets in the list | Own | Assigned to them | All | All |
 | Open a ticket | Own | Assigned or own | All | All |
+| All issues, read-only (no reporter identity, internal notes or history) | ✓ | ✓ | ✓ | ✓ |
 | Start work, request info, resolve | — | Assigned only | ✓ | ✓ |
 | Confirm and close (with rating) | Own | Own | ✓ | ✓ |
 | Cancel | Own, before assignment | Own, before assignment | ✓ | ✓ |

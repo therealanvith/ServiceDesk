@@ -125,6 +125,8 @@ export interface PagedResponse<T> {
   totalPages: number;
 }
 
+export type UpdateKind = "COMMENT" | "QUESTION" | "ANSWER" | "PICKUP" | "RESOLUTION" | "STATUS";
+
 export interface CommentItem {
   id: string;
   incidentId: string;
@@ -133,6 +135,31 @@ export interface CommentItem {
   commentText: string;
   isInternal: boolean;
   createdAt: string;
+  kind: UpdateKind;
+  authorRole: Role | null;
+}
+
+export interface PublicIssue {
+  id: string;
+  incidentNumber: string;
+  title: string;
+  description: string;
+  status: IncidentStatus;
+  priority: Priority;
+  category: Category;
+  serviceName: string | null;
+  handledBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updateCount: number;
+  updates: {
+    id: string;
+    kind: UpdateKind;
+    author: string;
+    authorRole: Role | null;
+    text: string;
+    createdAt: string;
+  }[];
 }
 
 export interface AuditLogItem {
@@ -473,6 +500,26 @@ export const api = {
     apiClient<IncidentDetail>(`/incidents/${id}/cancel`, post({ reason })),
   overridePriority: (id: string, priority: Priority, remarks: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/priority`, put({ priority, remarks })),
+
+  // All issues (read-only, every signed-in user)
+  listIssues: (params: {
+    status?: IncidentStatus;
+    category?: Category;
+    serviceId?: string;
+    searchText?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    page?: number;
+    size?: number;
+  }) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    const qs = query.toString();
+    return apiClient<PagedResponse<PublicIssue>>(`/issues${qs ? `?${qs}` : ""}`);
+  },
+  getIssue: (id: string) => apiClient<PublicIssue>(`/issues/${id}`),
 
   // Comments
   addComment: (id: string, commentText: string, isInternal: boolean) =>

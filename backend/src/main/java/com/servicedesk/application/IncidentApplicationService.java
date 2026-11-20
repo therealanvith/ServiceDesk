@@ -38,6 +38,7 @@ import com.servicedesk.domain.incident.Incident;
 import com.servicedesk.domain.incident.IncidentFactory;
 import com.servicedesk.domain.incident.IncidentId;
 import com.servicedesk.domain.incident.IncidentStatus;
+import com.servicedesk.domain.incident.UpdateKind;
 import com.servicedesk.domain.intelligence.CategorySuggestionStrategy;
 import com.servicedesk.domain.intelligence.JaccardSimilarityStrategy;
 import com.servicedesk.domain.intelligence.KeywordCategoryClassifier;
@@ -300,6 +301,11 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Work started by technician");
+    postUpdate(
+        incident.getId(),
+        actor,
+        UpdateKind.PICKUP,
+        actor.getFullName() + " picked this up and is working on it.");
     return toDetailResponse(saved);
   }
 
@@ -320,6 +326,7 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Clarification requested: " + request.question());
+    postUpdate(incident.getId(), actor, UpdateKind.QUESTION, request.question());
 
     notifyChannels(
         NotificationMessage.of(
@@ -348,6 +355,7 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Information provided: " + request.answer());
+    postUpdate(incident.getId(), actor, UpdateKind.ANSWER, request.answer());
 
     if (incident.getAssigneeId() != null) {
       notifyChannels(
@@ -379,6 +387,7 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Resolution applied: " + request.resolutionSummary());
+    postUpdate(incident.getId(), actor, UpdateKind.RESOLUTION, request.resolutionSummary());
 
     notifyChannels(
         NotificationMessage.of(
@@ -414,6 +423,18 @@ public class IncidentApplicationService {
       remarks = remarks + " (rated " + request.rating() + "/5)";
     }
     recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), remarks);
+    postUpdate(
+        incident.getId(),
+        actor,
+        UpdateKind.STATUS,
+        "Closed by "
+            + actor.getFullName()
+            + (request != null && request.rating() != null
+                ? " (rated " + request.rating() + "/5)"
+                : "")
+            + (request != null && request.remarks() != null && !request.remarks().isBlank()
+                ? ": " + request.remarks()
+                : "."));
 
     if (incident.getAssigneeId() != null) {
       notifyChannels(
@@ -450,6 +471,11 @@ public class IncidentApplicationService {
         oldStatus,
         incident.getStatus(),
         "Cancelled: " + request.reason());
+    postUpdate(
+        incident.getId(),
+        actor,
+        UpdateKind.STATUS,
+        "Cancelled by " + actor.getFullName() + ": " + request.reason());
     return toDetailResponse(saved);
   }
 
@@ -580,7 +606,9 @@ public class IncidentApplicationService {
         author.getFullName(),
         saved.getCommentText(),
         saved.isInternal(),
-        saved.getCreatedAt());
+        saved.getCreatedAt(),
+        saved.getKind(),
+        author.getRole());
   }
 
   @Transactional(readOnly = true)
@@ -604,7 +632,9 @@ public class IncidentApplicationService {
                     c.getAuthor().getFullName(),
                     c.getCommentText(),
                     c.isInternal(),
-                    c.getCreatedAt()))
+                    c.getCreatedAt(),
+                    c.getKind(),
+                    c.getAuthor().getRole()))
         .toList();
   }
 
@@ -745,6 +775,26 @@ public class IncidentApplicationService {
       }
       default -> throw new IllegalArgumentException("Unknown assignment strategy: " + strategyName);
     }
+  }
+
+  /**
+   * Writes a system entry into the ticket's public Updates thread, in the same transaction as the
+   * action it describes.
+   */
+  private void postUpdate(IncidentId incidentId, User actor, UpdateKind kind, String text) {
+    IncidentEntity incident =
+        incidentJpaRepository
+            .findById(incidentId.getValue())
+            .orElseThrow(() -> new IncidentNotFoundException("Incident not found: " + incidentId));
+    UserEntity author =
+        userJpaRepository
+            .findById(actor.getId().getValue())
+            .orElseThrow(() -> new UserNotFoundException("User not found: " + actor.getUsername()));
+    IncidentCommentEntity entry =
+        new IncidentCommentEntity(
+            UUID.randomUUID(), incident, author, text, false, clock.instant());
+    entry.setKind(kind);
+    commentJpaRepository.save(entry);
   }
 
   private void recordStatusChange(

@@ -11,6 +11,8 @@ import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.IncidentStatus;
+import com.servicedesk.domain.notification.NotificationChannel;
+import com.servicedesk.domain.notification.NotificationMessage;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.UserId;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
@@ -41,6 +43,7 @@ public class UserApplicationService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final GoogleIdTokenVerifier googleVerifier;
+  private final List<NotificationChannel> notificationChannels;
   private final Clock clock;
   private boolean registrationEnabled = true;
 
@@ -66,7 +69,29 @@ public class UserApplicationService {
             Role.EMPLOYEE,
             request.password());
     UserEntity user = userJpaRepository.findById(created.id()).orElseThrow();
+    announceNewUser(user, "signed up");
     return issueSession(user);
+  }
+
+  /** Tells administrators someone joined so they can review the new account's role. */
+  private void announceNewUser(UserEntity user, String how) {
+    for (Role role : List.of(Role.ADMINISTRATOR, Role.ROOT)) {
+      for (UserEntity admin : userJpaRepository.findByRoleAndActiveTrue(role)) {
+        NotificationDispatch.afterCommit(
+            notificationChannels,
+            NotificationMessage.of(
+                UserId.of(admin.getId()),
+                null,
+                "NEW_USER",
+                "New user: " + user.getFullName(),
+                user.getFullName()
+                    + " ("
+                    + user.getUsername()
+                    + ") "
+                    + how
+                    + " and starts as an employee. Change their role on the Users page if needed."));
+      }
+    }
   }
 
   public UserApplicationService(
@@ -75,7 +100,9 @@ public class UserApplicationService {
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
       GoogleIdTokenVerifier googleVerifier,
-      Clock clock) {
+      Clock clock,
+      List<NotificationChannel> notificationChannels) {
+    this.notificationChannels = notificationChannels;
     this.userJpaRepository = userJpaRepository;
     this.incidentJpaRepository = incidentJpaRepository;
     this.passwordEncoder = passwordEncoder;
@@ -153,7 +180,9 @@ public class UserApplicationService {
             clock.instant(),
             clock.instant());
     created.setGoogleSub(identity.subject());
-    return issueSession(userJpaRepository.save(created));
+    UserEntity saved = userJpaRepository.save(created);
+    announceNewUser(saved, "signed in with Google for the first time");
+    return issueSession(saved);
   }
 
   /** Links a Google identity to the signed-in account; proves ownership of both. */

@@ -42,6 +42,25 @@ export default function NewIncidentPage() {
   const [duplicates, setDuplicates] = useState<SimilarIncident[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [relatedNumber, setRelatedNumber] = useState<string | null>(null);
+
+  // "This affects me too" on All issues opens this page pre-filled with a reference to the issue.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const related = params.get("related");
+    if (!related) return;
+    const relatedTitle = params.get("title") ?? "";
+    setRelatedNumber(related);
+    setTitle(relatedTitle);
+    setDescription(`I'm affected by the same problem as ${related}${relatedTitle ? ` (${relatedTitle})` : ""}.
+
+`);
+    const relatedCategory = params.get("category") as Category | null;
+    if (relatedCategory && relatedCategory in CATEGORY_LABELS) {
+      setCategory(relatedCategory);
+      setCategoryTouched(true);
+    }
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: servicesKey re-runs the load for "Try again"
   useEffect(() => {
@@ -139,7 +158,11 @@ export default function NewIncidentPage() {
       <div className="page-header">
         <div>
           <h1>Report an issue</h1>
-          <p>The more detail you give, the faster it gets fixed.</p>
+          <p>
+            {relatedNumber
+              ? `Your report will mention ${relatedNumber} so staff can see it affects you too.`
+              : "The more detail you give, the faster it gets fixed."}
+          </p>
         </div>
       </div>
 

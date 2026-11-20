@@ -1,12 +1,12 @@
 "use client";
 
 import { AuditTimeline } from "@/components/AuditTimeline";
-import { CommentThread } from "@/components/CommentThread";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
 import { SlaBadge } from "@/components/SlaBadge";
 import { StateActions } from "@/components/StateActions";
 import { StatusBadge } from "@/components/StatusBadge";
+import { UpdatesThread } from "@/components/UpdatesThread";
 import { useAuth } from "@/context/AuthContext";
 import { type AuditLogItem, type CommentItem, type IncidentDetail, api } from "@/lib/apiClient";
 import { CATEGORY_LABELS, CRITICALITY_LABELS, formatDateTime, timeAgo } from "@/lib/labels";
@@ -29,6 +29,7 @@ export default function IncidentDetailPage() {
   const [commentsFailed, setCommentsFailed] = useState(false);
   const [auditFailed, setAuditFailed] = useState(false);
   const panelVersion = useRef(0);
+  const [replyRequest, setReplyRequest] = useState(0);
 
   // Comments and history load separately from the ticket, so one failing never hides the other,
   // and after an action the confirmed ticket stays on screen while these refresh.
@@ -144,12 +145,14 @@ export default function IncidentDetailPage() {
           {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
 
           {commentsFailed ? (
-            <PanelError title="Comments" onRetry={loadPanels} />
+            <PanelError title="Updates" onRetry={loadPanels} />
           ) : (
-            <CommentThread
+            <UpdatesThread
               incidentId={incident.id}
               initialComments={comments}
               currentUserRole={currentUserRole}
+              status={incident.status}
+              onReply={isReporter ? () => setReplyRequest((n) => n + 1) : undefined}
             />
           )}
 
@@ -251,6 +254,7 @@ export default function IncidentDetailPage() {
             currentUserRole={currentUserRole}
             isReporter={isReporter}
             isAssignee={Boolean(user && incident.assignee?.id === user.id)}
+            replyRequest={replyRequest}
             onUpdate={(updated) => {
               // The action succeeded: show the confirmed ticket and refresh only the panels.
               setIncident(updated);

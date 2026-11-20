@@ -11,6 +11,8 @@ interface StateActionsProps {
   isReporter: boolean;
   isAssignee: boolean;
   onUpdate: (updated: IncidentDetail) => void;
+  /** Bumped by the pinned question's "Reply" button to open the reply dialog. */
+  replyRequest?: number;
 }
 
 type DialogKind =
@@ -74,6 +76,7 @@ export function StateActions({
   isReporter,
   isAssignee,
   onUpdate,
+  replyRequest = 0,
 }: StateActionsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +114,13 @@ export function StateActions({
     setText("");
     setDialog(kind);
   };
+
+  useEffect(() => {
+    if (replyRequest > 0) {
+      setText("");
+      setDialog("provideInfo");
+    }
+  }, [replyRequest]);
 
   const handleAction = async (actionFn: () => Promise<IncidentDetail>) => {
     setLoading(true);

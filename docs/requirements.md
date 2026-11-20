@@ -90,6 +90,7 @@
 | :--- | :---: | :---: | :---: | :---: |
 | Report New Incident | **Yes** | **Yes** | **Yes** | **Yes** |
 | Tickets visible in the list | Own only | Assigned to them | All | All |
+| All issues (read-only: description, status, public updates; reporter hidden) | **Yes** | **Yes** | **Yes** | **Yes** |
 | Assign / Reassign Incident | No | No | **Yes** | **Yes** |
 | Start Work, Request Info, Resolve | No | **Yes** (assigned only) | **Yes** | **Yes** |
 | Provide Info / Resume | **Yes** (own ticket) | Own ticket | **Yes** | **Yes** |
@@ -100,21 +101,7 @@
 | Manage employees and technicians | No | No | **Yes** | **Yes** |
 | Grant administrator access | No | No | No | **Yes** |
 
-Tickets outside a user's scope respond as "not found", so their existence is not revealed.
-
---- | :---: | :---: | :---: |
-| Report New Incident | **Yes** | **Yes** | **Yes** |
-| View Own Incidents | **Yes** | **Yes** | **Yes** |
-| View All Active Incidents | No | **Yes** | **Yes** |
-| Assign / Reassign Incident | No | **Yes** (within tier) | **Yes** (unrestricted) |
-| Start Work (`IN_PROGRESS`) | No | **Yes** (if assigned) | **Yes** |
-| Request More Info (`PENDING_INFO`) | No | **Yes** | **Yes** |
-| Provide Info / Resume | **Yes** (own ticket) | **Yes** | **Yes** |
-| Mark Resolved | No | **Yes** | **Yes** |
-| Close Incident (Verification) | **Yes** (own ticket) | No | **Yes** |
-| Cancel Incident | **Yes** (if `REPORTED`) | No | **Yes** |
-| Configure Assignment Strategy | No | No | **Yes** |
-| View Full Audit Trail | No | **Yes** | **Yes** |
+Tickets outside a user's scope respond as "not found", so their existence is not revealed. The "All issues" list (`GET /api/v1/issues`) is a separate read-only view: it never includes the reporter's identity, internal notes, emails or the audit history, and acting on a ticket still goes through the scoped `/incidents` endpoints.
 
 ---
 
