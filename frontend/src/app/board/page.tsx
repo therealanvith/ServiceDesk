@@ -66,7 +66,7 @@ export default function BoardPage() {
         next[status] = (pages[i]?.content ?? []).filter(
           (ticket) =>
             // Technicians also see tickets they reported; the board is only the ones they work.
-            (isAdmin(user.role) || ticket.assigneeName === user.fullName) &&
+            (isAdmin(user.role) || ticket.assigneeId === user.id) &&
             (status !== "RESOLVED" || recentlyResolved(ticket))
         );
       });

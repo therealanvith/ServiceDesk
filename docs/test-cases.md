@@ -1,7 +1,7 @@
 # Test Cases Specification
 
-All test cases below are automated and run with `./mvnw test` in `backend/`. 101 JUnit tests and
-4 ArchUnit rules across unit, integration (Spring Boot + H2 in PostgreSQL mode) and architecture
+All test cases below are automated and run with `./mvnw test` in `backend/`. 104 tests (JUnit,
+including the ArchUnit architecture rules) across unit, integration (Spring Boot + H2 in PostgreSQL mode) and architecture
 suites cover them. Every row names the test method that proves it. External services are never
 called: Gemini and Brevo are tested against a mocked HTTP server, and the integration tests run
 without API keys, so they exercise the rule-based assistant and log-only email.
@@ -163,6 +163,8 @@ without API keys, so they exercise the rule-based assistant and log-only email.
 | TC-87 | Rule | Service status with a major incident and two linked tickets open | OUTAGE, 3 open tickets, 1 major incident | `MajorIncidentTest.resolvingTheMainTicketResolvesEveryLinkedOne` |
 | TC-88 | Rule | Resolve the main ticket | Both linked tickets RESOLVED with the same fix in their notes; service back to OPERATIONAL | `MajorIncidentTest.resolvingTheMainTicketResolvesEveryLinkedOne` |
 | TC-89 | Invalid | Link under a linked ticket, link a main ticket under another, link to itself | 400 each; unlink then clears `parentIncident` | `MajorIncidentTest.linksAreOneLevelDeep` |
+| TC-90 | AuthZ / Invalid | Trends as an employee, and with `days=14` | 403 for the employee; 400 for a range other than 7, 30 or 90 | `TrendsReportTest.onlyAdministratorsSeeTrendsAndOnlyForTheOfferedRanges` |
+| TC-91 | Normal | Create and resolve a ticket, then read 7-day trends | It counts in that day's created and resolved, and in the week's SLA compliance | `TrendsReportTest.aResolvedTicketShowsUpInTheDailySeriesAndCompliance` |
 
 ## 13. Manual end-to-end checks (demo)
 

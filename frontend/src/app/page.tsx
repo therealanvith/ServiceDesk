@@ -151,7 +151,7 @@ export default function IncidentsDashboardPage() {
   // Technicians also see tickets they reported, so only their assigned ones get the button.
   const quickMove = (ticket: IncidentSummary): Move | undefined => {
     if (ticket.status !== "ASSIGNED" && ticket.status !== "ACKNOWLEDGED") return undefined;
-    const isAssignee = ticket.assigneeName === user?.fullName;
+    const isAssignee = ticket.assigneeId === user?.id;
     return allowedMoves(ticket.status, role, isAssignee).find((move) => !move.text);
   };
 
@@ -170,6 +170,7 @@ export default function IncidentsDashboardPage() {
                 priority: updated.priority,
                 slaStatus: updated.slaWindow?.slaStatus ?? row.slaStatus,
                 assigneeName: updated.assignee?.fullName ?? row.assigneeName,
+                assigneeId: updated.assignee?.id ?? row.assigneeId,
               }
             : row
         )

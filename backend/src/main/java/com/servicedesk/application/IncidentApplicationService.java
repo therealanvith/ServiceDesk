@@ -1290,6 +1290,8 @@ public class IncidentApplicationService {
         incident.getCreatedAt(),
         incident.getAffectedServiceId() != null
             ? serviceNames.get(incident.getAffectedServiceId())
-            : null);
+            : null,
+        incident.getAssigneeId() != null ? incident.getAssigneeId().getValue() : null,
+        incident.getResolvedAt());
   }
 }

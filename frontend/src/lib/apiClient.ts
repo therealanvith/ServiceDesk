@@ -131,8 +131,8 @@ export interface IncidentSummary {
   slaStatus: SlaStatus | null;
   createdAt: string;
   serviceName: string | null;
-  /** Not sent by the list endpoint yet; the board keeps every resolved ticket until it is. */
-  resolvedAt?: string | null;
+  assigneeId: string | null;
+  resolvedAt: string | null;
 }
 
 export interface PagedResponse<T> {

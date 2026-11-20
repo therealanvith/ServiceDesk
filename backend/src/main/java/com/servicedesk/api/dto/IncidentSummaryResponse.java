@@ -18,4 +18,7 @@ public record IncidentSummaryResponse(
     String assigneeName,
     SlaStatus slaStatus,
     Instant createdAt,
-    String serviceName) {}
+    String serviceName,
+    /** Lets the board and list tell the assignee apart without comparing names. */
+    UUID assigneeId,
+    Instant resolvedAt) {}
