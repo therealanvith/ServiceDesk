@@ -5,9 +5,7 @@ import com.servicedesk.domain.incident.IncidentStatus;
 import com.servicedesk.domain.user.UserId;
 import java.util.Objects;
 
-/**
- * Initial state of an incident upon creation.
- */
+/** Initial state of an incident upon creation. */
 public class ReportedState implements IncidentState {
 
   @Override

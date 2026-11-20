@@ -13,9 +13,7 @@ import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRe
 import java.util.List;
 import org.springframework.stereotype.Component;
 
-/**
- * Hexagonal persistence adapter implementing the domain AuditLogRepository port.
- */
+/** Hexagonal persistence adapter implementing the domain AuditLogRepository port. */
 @Component
 public class JpaAuditLogRepositoryAdapter implements AuditLogRepository {
 

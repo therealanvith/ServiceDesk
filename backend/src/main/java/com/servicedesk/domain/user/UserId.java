@@ -4,9 +4,7 @@ import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Value object representing a unique user identity.
- */
+/** Value object representing a unique user identity. */
 public final class UserId implements Serializable {
 
   private final UUID value;

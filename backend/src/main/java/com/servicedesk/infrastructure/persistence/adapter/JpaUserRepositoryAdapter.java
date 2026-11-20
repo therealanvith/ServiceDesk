@@ -17,9 +17,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
-/**
- * Hexagonal persistence adapter implementing the domain UserRepository port.
- */
+/** Hexagonal persistence adapter implementing the domain UserRepository port. */
 @Component
 public class JpaUserRepositoryAdapter implements UserRepository {
 

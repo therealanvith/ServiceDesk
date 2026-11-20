@@ -22,19 +22,21 @@ import org.junit.jupiter.api.Test;
 class IncidentFactoryTest {
 
   @Test
-  @DisplayName("Factory initializes incident with calculated priority, SLA window, and ReportedState")
+  @DisplayName(
+      "Factory initializes incident with calculated priority, SLA window, and ReportedState")
   void testIncidentCreation() {
     Clock clock = Clock.fixed(Instant.parse("2026-11-10T08:00:00Z"), ZoneOffset.UTC);
     IncidentFactory factory = new IncidentFactory(new MatrixPriorityStrategy(), clock, 2000L);
     UserId reporterId = UserId.generate();
 
-    Incident incident = factory.createIncident(
-        "Wi-Fi connection failing in Library",
-        "Signal drops intermittently on floor 2",
-        Category.NETWORK,
-        Impact.MEDIUM,
-        Urgency.HIGH,
-        reporterId);
+    Incident incident =
+        factory.createIncident(
+            "Wi-Fi connection failing in Library",
+            "Signal drops intermittently on floor 2",
+            Category.NETWORK,
+            Impact.MEDIUM,
+            Urgency.HIGH,
+            reporterId);
 
     assertNotNull(incident.getId());
     assertEquals("INC-2001", incident.getIncidentNumber());

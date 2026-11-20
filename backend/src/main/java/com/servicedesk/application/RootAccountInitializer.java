@@ -17,8 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Creates the single root account on first start from ROOT_USERNAME / ROOT_PASSWORD.
  *
- * <p>The password is only read when no root account exists yet, so it never lives in source
- * control and later restarts never overwrite it.
+ * <p>The password is only read when no root account exists yet, so it never lives in source control
+ * and later restarts never overwrite it.
  */
 @Component
 public class RootAccountInitializer implements ApplicationRunner {

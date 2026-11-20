@@ -32,7 +32,17 @@ public record IncidentFilter(
       UserId reporterId,
       SlaStatus slaStatus,
       String searchText) {
-    this(status, priority, category, assigneeId, reporterId, slaStatus, searchText, null, null, null);
+    this(
+        status,
+        priority,
+        category,
+        assigneeId,
+        reporterId,
+        slaStatus,
+        searchText,
+        null,
+        null,
+        null);
   }
 
   public static IncidentFilter empty() {
@@ -48,12 +58,30 @@ public record IncidentFilter(
   }
 
   public IncidentFilter withReporter(UserId reporter) {
-    return new IncidentFilter(status, priority, category, null, reporter, slaStatus, searchText,
-        serviceId, createdFrom, createdTo);
+    return new IncidentFilter(
+        status,
+        priority,
+        category,
+        null,
+        reporter,
+        slaStatus,
+        searchText,
+        serviceId,
+        createdFrom,
+        createdTo);
   }
 
   public IncidentFilter withAssignee(UserId assignee) {
-    return new IncidentFilter(status, priority, category, assignee, null, slaStatus, searchText,
-        serviceId, createdFrom, createdTo);
+    return new IncidentFilter(
+        status,
+        priority,
+        category,
+        assignee,
+        null,
+        slaStatus,
+        searchText,
+        serviceId,
+        createdFrom,
+        createdTo);
   }
 }

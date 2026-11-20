@@ -28,11 +28,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Scheduled background worker evaluating SLA resolution deadlines and triggering automated priority escalations.
+ * Scheduled background worker evaluating SLA resolution deadlines and triggering automated priority
+ * escalations.
  *
  * <p>Each incident is evaluated in its own short transaction against a freshly loaded copy, so a
- * user changing a ticket mid-run is never overwritten and one failing ticket does not roll back
- * the rest of the run.
+ * user changing a ticket mid-run is never overwritten and one failing ticket does not roll back the
+ * rest of the run.
  */
 @Component
 @EnableScheduling
@@ -116,7 +117,9 @@ public class SlaScheduledEvaluator {
     }
 
     SlaStatus before =
-        incident.getSlaWindow() != null ? incident.getSlaWindow().getStatus() : SlaStatus.WITHIN_SLA;
+        incident.getSlaWindow() != null
+            ? incident.getSlaWindow().getStatus()
+            : SlaStatus.WITHIN_SLA;
     SlaStatus after = incident.evaluateSla(clock);
 
     // Automatic escalation: nobody has picked the ticket up by its response deadline.
@@ -133,7 +136,9 @@ public class SlaScheduledEvaluator {
     if (escalate) {
       escalate(incident, now);
     }
-    if (before != after && after == SlaStatus.WARNING_BREACH_IMMINENT && incident.getAssigneeId() != null) {
+    if (before != after
+        && after == SlaStatus.WARNING_BREACH_IMMINENT
+        && incident.getAssigneeId() != null) {
       NotificationDispatch.afterCommit(
           notificationChannels,
           NotificationMessage.of(
@@ -177,7 +182,10 @@ public class SlaScheduledEvaluator {
   }
 
   private void escalate(Incident incident, Instant now) {
-    String who = incident.getAssigneeId() == null ? "No technician is assigned" : "The assigned technician has not started";
+    String who =
+        incident.getAssigneeId() == null
+            ? "No technician is assigned"
+            : "The assigned technician has not started";
     auditLogRepository.save(
         AuditLog.create(
             incident.getId(),
@@ -205,11 +213,16 @@ public class SlaScheduledEvaluator {
               incident.getId(),
               "ESCALATION",
               "Escalated: " + incident.getIncidentNumber() + " has had no response",
-              incident.getTitle() + " (" + incident.getPriority() + ") missed its response target."));
+              incident.getTitle()
+                  + " ("
+                  + incident.getPriority()
+                  + ") missed its response target."));
     }
   }
 
   private <T> T inTransaction(Supplier<T> work) {
-    return transactionTemplate != null ? transactionTemplate.execute(status -> work.get()) : work.get();
+    return transactionTemplate != null
+        ? transactionTemplate.execute(status -> work.get())
+        : work.get();
   }
 }

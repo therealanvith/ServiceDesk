@@ -110,7 +110,7 @@ Pluggable technician allocation strategies implementing `AssignmentStrategy`:
 
 ## 4. Pre-Seeded Evaluation Accounts
 
-All accounts use the default password: **`password123`**
+All accounts use the default password: **`test`**
 
 | Username | Role | Full Name | Skills / Purpose |
 | :--- | :--- | :--- | :--- |
@@ -149,7 +149,7 @@ bun run dev
 ```
 
 ### 5.3 Quality & Verification Commands
-- **Seed / Reset Demo Passwords**: `docker compose exec -T postgres psql -U servicedesk_user -d servicedesk < scripts/seed-demo-users.sql` (sets all demo accounts to `password123`)
+- **Seed / Reset Demo Passwords**: `docker compose exec -T postgres psql -U servicedesk_user -d servicedesk < scripts/seed-demo-users.sql` (sets all demo accounts to `test`)
 - **Backend Architecture & Unit Tests**: `cd backend && ./mvnw test verify` (runs ArchUnit domain boundary checks and unit tests).
 - **Backend Code Formatting**: `cd backend && ./mvnw spotless:apply`
 - **Frontend Linter & Formatter**: `cd frontend && bun run lint:fix`

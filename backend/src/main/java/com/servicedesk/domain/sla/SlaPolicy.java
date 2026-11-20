@@ -15,7 +15,8 @@ public record SlaPolicy(Priority priority, Duration responseTarget, Duration res
       throw new IllegalArgumentException("Response target must be positive");
     }
     if (resolutionTarget.compareTo(responseTarget) < 0) {
-      throw new IllegalArgumentException("Resolution target cannot be shorter than response target");
+      throw new IllegalArgumentException(
+          "Resolution target cannot be shorter than response target");
     }
   }
 

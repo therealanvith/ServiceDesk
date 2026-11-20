@@ -1,7 +1,6 @@
 package com.servicedesk.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.servicedesk.domain.intelligence.JaccardSimilarityStrategy;
 import org.junit.jupiter.api.DisplayName;
@@ -34,7 +33,8 @@ class JaccardSimilarityStrategyTest {
     // Tokens A: lab, 304, workstations, cannot, reach, gateway (6 tokens)
     // Tokens B: lab, 304, switch, port, trunking, failure, gateway (7 tokens)
     // Intersection: lab, 304, gateway (3 tokens)
-    // Union: lab, 304, workstations, cannot, reach, switch, port, trunking, failure, gateway (10 tokens)
+    // Union: lab, 304, workstations, cannot, reach, switch, port, trunking, failure, gateway (10
+    // tokens)
     // Score: 3 / 10 = 0.30
     double score = strategy.calculateSimilarity(a, b);
     assertEquals(0.30, score, 0.01);

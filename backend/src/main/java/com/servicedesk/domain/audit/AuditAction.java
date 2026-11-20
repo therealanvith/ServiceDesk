@@ -1,8 +1,6 @@
 package com.servicedesk.domain.audit;
 
-/**
- * Audit actions recorded in the immutable audit ledger.
- */
+/** Audit actions recorded in the immutable audit ledger. */
 public enum AuditAction {
   CREATED,
   STATUS_CHANGED,

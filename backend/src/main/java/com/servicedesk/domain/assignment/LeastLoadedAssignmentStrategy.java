@@ -6,9 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Assignment strategy selecting the available technician with the fewest active tickets.
- */
+/** Assignment strategy selecting the available technician with the fewest active tickets. */
 public class LeastLoadedAssignmentStrategy implements AssignmentStrategy {
 
   @Override

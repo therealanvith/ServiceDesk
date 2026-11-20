@@ -28,5 +28,10 @@ public record ReportResponse(
   public record ServiceLoad(String service, long total, long open) {}
 
   public record TechnicianLoad(
-      String username, String fullName, long active, long breached, long resolved, boolean available) {}
+      String username,
+      String fullName,
+      long active,
+      long breached,
+      long resolved,
+      boolean available) {}
 }

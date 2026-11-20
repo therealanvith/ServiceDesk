@@ -4,9 +4,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * In-memory domain event publisher supporting the Observer pattern.
- */
+/** In-memory domain event publisher supporting the Observer pattern. */
 public class DomainEventPublisher {
 
   private final List<DomainEventListener> listeners = new CopyOnWriteArrayList<>();

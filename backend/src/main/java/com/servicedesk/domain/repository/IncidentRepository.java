@@ -6,9 +6,7 @@ import com.servicedesk.domain.user.UserId;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Domain port for incident persistence and retrieval.
- */
+/** Domain port for incident persistence and retrieval. */
 public interface IncidentRepository {
 
   Optional<Incident> findById(IncidentId id);

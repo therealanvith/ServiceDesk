@@ -42,7 +42,7 @@ class AuthControllerTest {
   @Test
   @DisplayName("POST /api/v1/auth/login succeeds with valid credentials")
   void testLoginSuccess() throws Exception {
-    LoginRequest request = new LoginRequest("emp", "password123");
+    LoginRequest request = new LoginRequest("emp", "test");
     UserProfileResponse profile =
         new UserProfileResponse(
             UUID.randomUUID(), "emp", "Employee", null, Role.EMPLOYEE, Set.of());

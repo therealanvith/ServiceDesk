@@ -3,13 +3,13 @@ package com.servicedesk.api;
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
 import com.servicedesk.api.dto.AuditLogResponse;
-import com.servicedesk.api.dto.CategorySuggestionResponse;
-import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.CancelIncidentRequest;
+import com.servicedesk.api.dto.CategorySuggestionResponse;
 import com.servicedesk.api.dto.CloseIncidentRequest;
 import com.servicedesk.api.dto.CommentResponse;
 import com.servicedesk.api.dto.CreateIncidentRequest;
 import com.servicedesk.api.dto.IncidentDetailResponse;
+import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.IncidentSummaryResponse;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
@@ -90,7 +90,9 @@ public class IncidentController {
             serviceId,
             createdFrom != null ? createdFrom.atStartOfDay().toInstant(ZoneOffset.UTC) : null,
             // "To" is inclusive of the whole day.
-            createdTo != null ? createdTo.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC) : null);
+            createdTo != null
+                ? createdTo.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+                : null);
 
     PagedResponse<IncidentSummaryResponse> response =
         incidentService.listIncidents(filter, page, size, principal.getName());
@@ -124,7 +126,8 @@ public class IncidentController {
       @PathVariable UUID id,
       @RequestBody(required = false) AssignIncidentRequest request,
       Principal principal) {
-    IncidentDetailResponse response = incidentService.assignIncident(id, request, principal.getName());
+    IncidentDetailResponse response =
+        incidentService.assignIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
@@ -139,18 +142,14 @@ public class IncidentController {
   @PostMapping("/{id}/request-info")
   @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> requestInfo(
-      @PathVariable UUID id,
-      @Valid @RequestBody RequestInfoRequest request,
-      Principal principal) {
+      @PathVariable UUID id, @Valid @RequestBody RequestInfoRequest request, Principal principal) {
     IncidentDetailResponse response = incidentService.requestInfo(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
   @PostMapping("/{id}/provide-info")
   public ResponseEntity<IncidentDetailResponse> provideInfo(
-      @PathVariable UUID id,
-      @Valid @RequestBody ProvideInfoRequest request,
-      Principal principal) {
+      @PathVariable UUID id, @Valid @RequestBody ProvideInfoRequest request, Principal principal) {
     IncidentDetailResponse response = incidentService.provideInfo(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
@@ -161,7 +160,8 @@ public class IncidentController {
       @PathVariable UUID id,
       @Valid @RequestBody ResolveIncidentRequest request,
       Principal principal) {
-    IncidentDetailResponse response = incidentService.resolveIncident(id, request, principal.getName());
+    IncidentDetailResponse response =
+        incidentService.resolveIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
@@ -170,7 +170,8 @@ public class IncidentController {
       @PathVariable UUID id,
       @Valid @RequestBody(required = false) CloseIncidentRequest request,
       Principal principal) {
-    IncidentDetailResponse response = incidentService.closeIncident(id, request, principal.getName());
+    IncidentDetailResponse response =
+        incidentService.closeIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
@@ -179,7 +180,8 @@ public class IncidentController {
       @PathVariable UUID id,
       @Valid @RequestBody CancelIncidentRequest request,
       Principal principal) {
-    IncidentDetailResponse response = incidentService.cancelIncident(id, request, principal.getName());
+    IncidentDetailResponse response =
+        incidentService.cancelIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
@@ -189,15 +191,14 @@ public class IncidentController {
       @PathVariable UUID id,
       @Valid @RequestBody OverridePriorityRequest request,
       Principal principal) {
-    IncidentDetailResponse response = incidentService.overridePriority(id, request, principal.getName());
+    IncidentDetailResponse response =
+        incidentService.overridePriority(id, request, principal.getName());
     return ResponseEntity.ok(response);
   }
 
   @PostMapping("/{id}/comments")
   public ResponseEntity<CommentResponse> addComment(
-      @PathVariable UUID id,
-      @Valid @RequestBody AddCommentRequest request,
-      Principal principal) {
+      @PathVariable UUID id, @Valid @RequestBody AddCommentRequest request, Principal principal) {
     CommentResponse response = incidentService.addComment(id, request, principal.getName());
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }

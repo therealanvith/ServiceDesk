@@ -7,8 +7,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Assignment strategy prioritizing technicians with verified skill category matches.
- * Falls back to another strategy (typically least-loaded) for ties or when no specialist is available.
+ * Assignment strategy prioritizing technicians with verified skill category matches. Falls back to
+ * another strategy (typically least-loaded) for ties or when no specialist is available.
  */
 public class SkillMatchAssignmentStrategy implements AssignmentStrategy {
 
@@ -19,7 +19,8 @@ public class SkillMatchAssignmentStrategy implements AssignmentStrategy {
   }
 
   public SkillMatchAssignmentStrategy(AssignmentStrategy fallbackStrategy) {
-    this.fallbackStrategy = Objects.requireNonNull(fallbackStrategy, "Fallback strategy must not be null");
+    this.fallbackStrategy =
+        Objects.requireNonNull(fallbackStrategy, "Fallback strategy must not be null");
   }
 
   @Override
@@ -32,10 +33,11 @@ public class SkillMatchAssignmentStrategy implements AssignmentStrategy {
       return fallbackStrategy.selectTechnician(incident, availableTechnicians);
     }
 
-    List<User> skilledTechnicians = availableTechnicians.stream()
-        .filter(User::isAvailable)
-        .filter(tech -> tech.hasSkill(incident.getCategory()))
-        .toList();
+    List<User> skilledTechnicians =
+        availableTechnicians.stream()
+            .filter(User::isAvailable)
+            .filter(tech -> tech.hasSkill(incident.getCategory()))
+            .toList();
 
     if (!skilledTechnicians.isEmpty()) {
       return fallbackStrategy.selectTechnician(incident, skilledTechnicians);

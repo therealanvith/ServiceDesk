@@ -6,9 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Sequential round-robin assignment strategy using an atomic counter.
- */
+/** Sequential round-robin assignment strategy using an atomic counter. */
 public class RoundRobinAssignmentStrategy implements AssignmentStrategy {
 
   private final AtomicInteger counter;
@@ -27,9 +25,7 @@ public class RoundRobinAssignmentStrategy implements AssignmentStrategy {
       return Optional.empty();
     }
 
-    List<User> activeCandidates = availableTechnicians.stream()
-        .filter(User::isAvailable)
-        .toList();
+    List<User> activeCandidates = availableTechnicians.stream().filter(User::isAvailable).toList();
 
     if (activeCandidates.isEmpty()) {
       return Optional.empty();

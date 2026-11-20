@@ -21,8 +21,15 @@ class SlaScheduledEvaluatorTest {
   @Test
   void resolvedTicketsDoNotBreachWhileWaitingForClosure() {
     Instant start = Instant.parse("2026-11-19T00:00:00Z");
-    Incident incident = new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
-        .createIncident("Test", "Description", Category.NETWORK, Impact.LOW, Urgency.LOW, UserId.generate());
+    Incident incident =
+        new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
+            .createIncident(
+                "Test",
+                "Description",
+                Category.NETWORK,
+                Impact.LOW,
+                Urgency.LOW,
+                UserId.generate());
     UserId tech = UserId.generate();
     incident.assign(tech, tech);
     incident.startWork(tech);
@@ -31,8 +38,14 @@ class SlaScheduledEvaluatorTest {
     assertThat(incident.evaluateSla(afterDeadline)).isEqualTo(SlaStatus.WITHIN_SLA);
     IncidentRepository repository = mock(IncidentRepository.class);
     when(repository.findAll()).thenReturn(List.of(incident));
-    var result = new SlaScheduledEvaluator(repository, mock(AuditLogRepository.class), List.of(), afterDeadline, mock(UserRepository.class))
-        .evaluateAllSla();
+    var result =
+        new SlaScheduledEvaluator(
+                repository,
+                mock(AuditLogRepository.class),
+                List.of(),
+                afterDeadline,
+                mock(UserRepository.class))
+            .evaluateAllSla();
     assertThat(result.evaluatedCount()).isZero();
     verify(repository, never()).save(any());
   }
@@ -40,19 +53,32 @@ class SlaScheduledEvaluatorTest {
   @Test
   void persistsWarningsAndEscalatesOnlyOnFirstBreach() {
     Instant start = Instant.parse("2026-11-19T00:00:00Z");
-    Incident incident = new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
-        .createIncident("Test", "Description", Category.NETWORK, Impact.LOW, Urgency.LOW, UserId.generate());
+    Incident incident =
+        new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
+            .createIncident(
+                "Test",
+                "Description",
+                Category.NETWORK,
+                Impact.LOW,
+                Urgency.LOW,
+                UserId.generate());
     incident.markResponded(start); // keep this scenario about the resolution target only
     IncidentRepository repository = mock(IncidentRepository.class);
     AuditLogRepository audits = mock(AuditLogRepository.class);
     when(repository.findAll()).thenReturn(List.of(incident));
     when(repository.findById(incident.getId())).thenReturn(Optional.of(incident));
-    Clock warning = Clock.fixed(incident.getSlaWindow().getResolutionDeadline().minusSeconds(600), ZoneOffset.UTC);
-    new SlaScheduledEvaluator(repository, audits, List.of(), warning, mock(UserRepository.class)).evaluateAllSla();
+    Clock warning =
+        Clock.fixed(
+            incident.getSlaWindow().getResolutionDeadline().minusSeconds(600), ZoneOffset.UTC);
+    new SlaScheduledEvaluator(repository, audits, List.of(), warning, mock(UserRepository.class))
+        .evaluateAllSla();
     assertThat(incident.getSlaWindow().getStatus()).isEqualTo(SlaStatus.WARNING_BREACH_IMMINENT);
     verify(repository).save(incident);
-    Clock breach = Clock.fixed(incident.getSlaWindow().getResolutionDeadline().plusSeconds(1), ZoneOffset.UTC);
-    SlaScheduledEvaluator evaluator = new SlaScheduledEvaluator(repository, audits, List.of(), breach, mock(UserRepository.class));
+    Clock breach =
+        Clock.fixed(incident.getSlaWindow().getResolutionDeadline().plusSeconds(1), ZoneOffset.UTC);
+    SlaScheduledEvaluator evaluator =
+        new SlaScheduledEvaluator(
+            repository, audits, List.of(), breach, mock(UserRepository.class));
     evaluator.evaluateAllSla();
     var priority = incident.getPriority();
     evaluator.evaluateAllSla();
@@ -64,13 +90,21 @@ class SlaScheduledEvaluatorTest {
   @Test
   void escalatesOnceWhenNobodyRespondsInTime() {
     Instant start = Instant.parse("2026-11-19T00:00:00Z");
-    Incident incident = new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
-        .createIncident("Test", "Description", Category.NETWORK, Impact.HIGH, Urgency.HIGH, UserId.generate());
+    Incident incident =
+        new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(start, ZoneOffset.UTC))
+            .createIncident(
+                "Test",
+                "Description",
+                Category.NETWORK,
+                Impact.HIGH,
+                Urgency.HIGH,
+                UserId.generate());
     IncidentRepository repository = mock(IncidentRepository.class);
     AuditLogRepository audits = mock(AuditLogRepository.class);
     when(repository.findAll()).thenReturn(List.of(incident));
     when(repository.findById(incident.getId())).thenReturn(Optional.of(incident));
-    Clock late = Clock.fixed(incident.getSlaWindow().getResponseDeadline().plusSeconds(60), ZoneOffset.UTC);
+    Clock late =
+        Clock.fixed(incident.getSlaWindow().getResponseDeadline().plusSeconds(60), ZoneOffset.UTC);
     SlaScheduledEvaluator evaluator =
         new SlaScheduledEvaluator(repository, audits, List.of(), late, mock(UserRepository.class));
 

@@ -6,9 +6,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * Pure domain entity representing a user in the ServiceDesk system.
- */
+/** Pure domain entity representing a user in the ServiceDesk system. */
 public class User {
 
   private final UserId id;

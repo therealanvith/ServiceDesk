@@ -15,17 +15,15 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-/**
- * Centralized exception handler mapping uncaught errors to standardized JSON responses.
- */
+/** Centralized exception handler mapping uncaught errors to standardized JSON responses. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -70,8 +68,7 @@ public class GlobalExceptionHandler {
   }
 
   @ExceptionHandler({DomainValidationException.class, IllegalArgumentException.class})
-  public ResponseEntity<ErrorResponse> handleBadRequest(
-      Exception ex, HttpServletRequest request) {
+  public ResponseEntity<ErrorResponse> handleBadRequest(Exception ex, HttpServletRequest request) {
     return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
   }
 
@@ -89,10 +86,14 @@ public class GlobalExceptionHandler {
     return buildResponse(HttpStatus.BAD_REQUEST, detailedMessage, request);
   }
 
-  @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+  @ExceptionHandler({
+    HttpMessageNotReadableException.class,
+    MethodArgumentTypeMismatchException.class
+  })
   public ResponseEntity<ErrorResponse> handleMalformedRequest(
       Exception ex, HttpServletRequest request) {
-    return buildResponse(HttpStatus.BAD_REQUEST, "Invalid request body or parameter value", request);
+    return buildResponse(
+        HttpStatus.BAD_REQUEST, "Invalid request body or parameter value", request);
   }
 
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

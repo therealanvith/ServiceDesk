@@ -54,7 +54,8 @@ class SlaWindowTest {
     assertFalse(window.isPaused());
 
     assertEquals(Duration.ofMinutes(45), window.getPausedDuration());
-    assertEquals(originalResolutionDeadline.plus(Duration.ofMinutes(45)), window.getResolutionDeadline());
+    assertEquals(
+        originalResolutionDeadline.plus(Duration.ofMinutes(45)), window.getResolutionDeadline());
   }
 
   @Test
@@ -64,7 +65,8 @@ class SlaWindowTest {
     SlaWindow window = SlaWindow.calculateInitial(Priority.P3_MEDIUM, start); // 8 hour resolution
     Duration warning = Duration.ofHours(2); // last quarter of the window
 
-    assertEquals(SlaStatus.WITHIN_SLA, window.checkBreach(start.plus(Duration.ofHours(5)), warning));
+    assertEquals(
+        SlaStatus.WITHIN_SLA, window.checkBreach(start.plus(Duration.ofHours(5)), warning));
     assertEquals(
         SlaStatus.WARNING_BREACH_IMMINENT,
         window.checkBreach(start.plus(Duration.ofHours(6)).plus(Duration.ofMinutes(30)), warning));

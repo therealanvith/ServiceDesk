@@ -5,9 +5,7 @@ import com.servicedesk.domain.user.UserId;
 import java.time.Instant;
 import java.util.Objects;
 
-/**
- * Domain representation of a notification message dispatched to a user.
- */
+/** Domain representation of a notification message dispatched to a user. */
 public record NotificationMessage(
     UserId recipientId,
     IncidentId incidentId,
@@ -25,11 +23,7 @@ public record NotificationMessage(
   }
 
   public static NotificationMessage of(
-      UserId recipientId,
-      IncidentId incidentId,
-      String type,
-      String title,
-      String message) {
+      UserId recipientId, IncidentId incidentId, String type, String title, String message) {
     return new NotificationMessage(recipientId, incidentId, type, title, message, Instant.now());
   }
 }

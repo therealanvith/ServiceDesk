@@ -1,8 +1,6 @@
 package com.servicedesk.domain.incident;
 
-/**
- * Incident lifecycle statuses governed by the State pattern.
- */
+/** Incident lifecycle statuses governed by the State pattern. */
 public enum IncidentStatus {
   REPORTED,
   ASSIGNED,

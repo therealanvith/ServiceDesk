@@ -12,9 +12,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Aggregate root representing an IT service desk incident ticket.
- */
+/** Aggregate root representing an IT service desk incident ticket. */
 public class Incident {
 
   private final IncidentId id;
@@ -58,7 +56,8 @@ public class Incident {
       Instant updatedAt,
       Clock clock) {
     this.id = Objects.requireNonNull(id, "Incident ID must not be null");
-    this.incidentNumber = Objects.requireNonNull(incidentNumber, "Incident number must not be null");
+    this.incidentNumber =
+        Objects.requireNonNull(incidentNumber, "Incident number must not be null");
     this.title = Objects.requireNonNull(title, "Title must not be null");
     this.description = Objects.requireNonNull(description, "Description must not be null");
     this.category = Objects.requireNonNull(category, "Category must not be null");
@@ -131,13 +130,16 @@ public class Incident {
     }
 
     // Closed or cancelled tickets are not breached further
-    if (this.currentState.getStatus().isTerminal() || this.currentState.getStatus() == IncidentStatus.RESOLVED) {
+    if (this.currentState.getStatus().isTerminal()
+        || this.currentState.getStatus() == IncidentStatus.RESOLVED) {
       return this.slaWindow.getStatus();
     }
 
     SlaStatus previous = this.slaWindow.getStatus();
     SlaStatus evaluated = this.slaWindow.checkBreach(now, warningWindow());
-    if (previous != SlaStatus.BREACHED && evaluated == SlaStatus.BREACHED && this.priority != Priority.P1_CRITICAL) {
+    if (previous != SlaStatus.BREACHED
+        && evaluated == SlaStatus.BREACHED
+        && this.priority != Priority.P1_CRITICAL) {
       this.priority = this.priority.escalate();
     }
     this.updatedAt = now;

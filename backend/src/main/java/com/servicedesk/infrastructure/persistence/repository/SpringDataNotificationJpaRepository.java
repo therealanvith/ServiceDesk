@@ -17,13 +17,15 @@ public interface SpringDataNotificationJpaRepository
 
   List<NotificationEntity> findByRecipientIdOrderByCreatedAtDesc(UUID recipientId);
 
-  List<NotificationEntity> findByRecipientIdOrderByCreatedAtDesc(UUID recipientId, Pageable pageable);
+  List<NotificationEntity> findByRecipientIdOrderByCreatedAtDesc(
+      UUID recipientId, Pageable pageable);
 
   long countByRecipientIdAndReadFalse(UUID recipientId);
 
   Optional<NotificationEntity> findByIdAndRecipientId(UUID id, UUID recipientId);
 
   @Modifying
-  @Query("update NotificationEntity n set n.read = true where n.recipient.id = :recipientId and n.read = false")
+  @Query(
+      "update NotificationEntity n set n.read = true where n.recipient.id = :recipientId and n.read = false")
   int markAllRead(@Param("recipientId") UUID recipientId);
 }

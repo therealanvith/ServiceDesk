@@ -14,9 +14,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/**
- * Lightweight, standard-compliant RFC 7519 HMAC-SHA256 JWT generator and validator.
- */
+/** Lightweight, standard-compliant RFC 7519 HMAC-SHA256 JWT generator and validator. */
 @Component
 public class JwtTokenProvider {
 
@@ -82,7 +80,8 @@ public class JwtTokenProvider {
         return false;
       }
 
-      String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+      String payloadJson =
+          new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
       JsonNode payload = objectMapper.readTree(payloadJson);
       long exp = payload.path("exp").asLong(0);
 
@@ -95,7 +94,8 @@ public class JwtTokenProvider {
   public String extractUsername(String token) {
     try {
       String[] parts = token.split("\\.");
-      String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+      String payloadJson =
+          new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
       JsonNode payload = objectMapper.readTree(payloadJson);
       return payload.path("sub").asText();
     } catch (Exception e) {
@@ -106,7 +106,8 @@ public class JwtTokenProvider {
   public String extractRole(String token) {
     try {
       String[] parts = token.split("\\.");
-      String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+      String payloadJson =
+          new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
       JsonNode payload = objectMapper.readTree(payloadJson);
       return payload.path("role").asText();
     } catch (Exception e) {

@@ -15,9 +15,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 
-/**
- * Creational Factory ensuring consistent instantiation of valid Incident aggregates.
- */
+/** Creational Factory ensuring consistent instantiation of valid Incident aggregates. */
 public class IncidentFactory {
 
   private final PriorityCalculationStrategy priorityStrategy;
@@ -34,9 +32,7 @@ public class IncidentFactory {
   }
 
   public IncidentFactory(
-      PriorityCalculationStrategy priorityStrategy,
-      Clock clock,
-      long initialSequence) {
+      PriorityCalculationStrategy priorityStrategy, Clock clock, long initialSequence) {
     this(priorityStrategy, clock, new AtomicLong(initialSequence)::incrementAndGet);
   }
 
@@ -68,8 +64,8 @@ public class IncidentFactory {
   }
 
   /**
-   * Creates an incident for an affected IT service; the service's business criticality is
-   * factored into the priority, and the SLA comes from the policy configured for that priority.
+   * Creates an incident for an affected IT service; the service's business criticality is factored
+   * into the priority, and the SLA comes from the policy configured for that priority.
    */
   public Incident createIncident(
       String title,
@@ -92,22 +88,23 @@ public class IncidentFactory {
     Priority priority = priorityStrategy.calculatePriority(impact, urgency, criticality);
     Instant now = clock.instant();
     SlaWindow slaWindow = SlaWindow.calculateInitial(slaPolicies.policyFor(priority), now);
-    Incident incident = new Incident(
-        incidentId,
-        incidentNumber,
-        title,
-        description,
-        category,
-        priority,
-        impact,
-        urgency,
-        reporterId,
-        null, // unassigned upon initial creation
-        new ReportedState(),
-        slaWindow,
-        now,
-        now,
-        clock);
+    Incident incident =
+        new Incident(
+            incidentId,
+            incidentNumber,
+            title,
+            description,
+            category,
+            priority,
+            impact,
+            urgency,
+            reporterId,
+            null, // unassigned upon initial creation
+            new ReportedState(),
+            slaWindow,
+            now,
+            now,
+            clock);
     incident.setAffectedServiceId(affectedServiceId);
     return incident;
   }

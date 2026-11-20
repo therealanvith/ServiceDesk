@@ -6,9 +6,4 @@ import java.util.Set;
 import java.util.UUID;
 
 public record UserProfileResponse(
-    UUID id,
-    String username,
-    String fullName,
-    String email,
-    Role role,
-    Set<Category> skills) {}
+    UUID id, String username, String fullName, String email, Role role, Set<Category> skills) {}

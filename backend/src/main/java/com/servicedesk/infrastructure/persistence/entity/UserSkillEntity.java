@@ -14,7 +14,9 @@ import jakarta.persistence.UniqueConstraint;
 import java.util.UUID;
 
 @Entity
-@Table(name = "user_skills", uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "category"}))
+@Table(
+    name = "user_skills",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "category"}))
 public class UserSkillEntity {
 
   @Id

@@ -4,4 +4,5 @@ import com.servicedesk.domain.priority.Priority;
 import com.servicedesk.infrastructure.persistence.entity.SlaPolicyEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface SpringDataSlaPolicyJpaRepository extends JpaRepository<SlaPolicyEntity, Priority> {}
+public interface SpringDataSlaPolicyJpaRepository
+    extends JpaRepository<SlaPolicyEntity, Priority> {}

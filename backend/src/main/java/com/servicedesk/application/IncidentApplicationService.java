@@ -3,20 +3,20 @@ package com.servicedesk.application;
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
 import com.servicedesk.api.dto.AuditLogResponse;
-import com.servicedesk.api.dto.CategorySuggestionResponse;
-import com.servicedesk.api.dto.IncidentDraftRequest;
-import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.CancelIncidentRequest;
+import com.servicedesk.api.dto.CategorySuggestionResponse;
 import com.servicedesk.api.dto.CloseIncidentRequest;
 import com.servicedesk.api.dto.CommentResponse;
 import com.servicedesk.api.dto.CreateIncidentRequest;
 import com.servicedesk.api.dto.IncidentDetailResponse;
+import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.IncidentSummaryResponse;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
 import com.servicedesk.api.dto.RequestInfoRequest;
 import com.servicedesk.api.dto.ResolveIncidentRequest;
+import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.SimilarIncidentResponse;
 import com.servicedesk.api.dto.SlaWindowResponse;
 import com.servicedesk.api.dto.UserSummaryResponse;
@@ -44,8 +44,8 @@ import com.servicedesk.domain.intelligence.KeywordCategoryClassifier;
 import com.servicedesk.domain.intelligence.SimilarityStrategy;
 import com.servicedesk.domain.notification.NotificationChannel;
 import com.servicedesk.domain.notification.NotificationMessage;
-import com.servicedesk.domain.priority.WeightedPriorityStrategy;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
+import com.servicedesk.domain.priority.WeightedPriorityStrategy;
 import com.servicedesk.domain.repository.AuditLogRepository;
 import com.servicedesk.domain.repository.IncidentFilter;
 import com.servicedesk.domain.repository.IncidentRepository;
@@ -63,7 +63,6 @@ import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJ
 import com.servicedesk.infrastructure.persistence.repository.SpringDataItServiceJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -127,11 +126,13 @@ public class IncidentApplicationService {
     this.currentAssignmentStrategy = new SkillMatchAssignmentStrategy();
   }
 
-  public IncidentDetailResponse createIncident(CreateIncidentRequest request, String reporterUsername) {
+  public IncidentDetailResponse createIncident(
+      CreateIncidentRequest request, String reporterUsername) {
     User reporter =
         userRepository
             .findByUsername(reporterUsername)
-            .orElseThrow(() -> new UserNotFoundException("Reporter not found: " + reporterUsername));
+            .orElseThrow(
+                () -> new UserNotFoundException("Reporter not found: " + reporterUsername));
 
     ItServiceEntity service = null;
     if (request.serviceId() != null) {
@@ -165,11 +166,15 @@ public class IncidentApplicationService {
             null,
             incident.getStatus().name(),
             clock.instant(),
-            "Created as " + incident.getCategory()
+            "Created as "
+                + incident.getCategory()
                 + (service != null ? " on " + service.getName() : "")
-                + "; priority " + incident.getPriority()
-                + " from impact " + incident.getImpact()
-                + ", urgency " + incident.getUrgency()
+                + "; priority "
+                + incident.getPriority()
+                + " from impact "
+                + incident.getImpact()
+                + ", urgency "
+                + incident.getUrgency()
                 + (service != null ? ", service criticality " + service.getCriticality() : "")));
 
     // Attempt automatic assignment using current strategy
@@ -231,7 +236,9 @@ public class IncidentApplicationService {
       User tech =
           userRepository
               .findById(UserId.of(request.technicianId()))
-              .orElseThrow(() -> new UserNotFoundException("Technician not found: " + request.technicianId()));
+              .orElseThrow(
+                  () ->
+                      new UserNotFoundException("Technician not found: " + request.technicianId()));
       if (tech.getRole() != Role.TECHNICIAN || !tech.isAvailable()) {
         throw new IllegalArgumentException("Select an active technician for assignment");
       }
@@ -243,7 +250,9 @@ public class IncidentApplicationService {
           currentAssignmentStrategy
               .selectTechnician(incident, technicians)
               .orElseThrow(
-                  () -> new InvalidStateTransitionException("No available technician for assignment"));
+                  () ->
+                      new InvalidStateTransitionException(
+                          "No available technician for assignment"));
       targetTechId = selected.getId();
       targetTechName = selected.getUsername();
     }
@@ -286,7 +295,12 @@ public class IncidentApplicationService {
     incident.markResponded(clock.instant());
     Incident saved = incidentRepository.save(incident);
 
-    recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Work started by technician");
+    recordStatusChange(
+        incident.getId(),
+        actor.getId(),
+        oldStatus,
+        incident.getStatus(),
+        "Work started by technician");
     return toDetailResponse(saved);
   }
 
@@ -302,7 +316,11 @@ public class IncidentApplicationService {
     Incident saved = incidentRepository.save(incident);
 
     recordStatusChange(
-        incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Clarification requested: " + request.question());
+        incident.getId(),
+        actor.getId(),
+        oldStatus,
+        incident.getStatus(),
+        "Clarification requested: " + request.question());
 
     notifyChannels(
         NotificationMessage.of(
@@ -326,7 +344,11 @@ public class IncidentApplicationService {
     Incident saved = incidentRepository.save(incident);
 
     recordStatusChange(
-        incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Information provided: " + request.answer());
+        incident.getId(),
+        actor.getId(),
+        oldStatus,
+        incident.getStatus(),
+        "Information provided: " + request.answer());
 
     if (incident.getAssigneeId() != null) {
       notifyChannels(
@@ -380,13 +402,15 @@ public class IncidentApplicationService {
     incident.close(actor.getId());
     if (request != null && request.rating() != null) {
       if (!actor.getId().equals(incident.getReporterId())) {
-        throw new UnauthorizedOperationException("Only the person who reported it can rate the support");
+        throw new UnauthorizedOperationException(
+            "Only the person who reported it can rate the support");
       }
       incident.recordFeedback(request.rating(), request.remarks());
     }
     Incident saved = incidentRepository.save(incident);
 
-    String remarks = request != null && request.remarks() != null ? request.remarks() : "Confirmed closure";
+    String remarks =
+        request != null && request.remarks() != null ? request.remarks() : "Confirmed closure";
     if (request != null && request.rating() != null) {
       remarks = remarks + " (rated " + request.rating() + "/5)";
     }
@@ -421,7 +445,12 @@ public class IncidentApplicationService {
     incident.cancel(request.reason(), actor.getId());
     Incident saved = incidentRepository.save(incident);
 
-    recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), "Cancelled: " + request.reason());
+    recordStatusChange(
+        incident.getId(),
+        actor.getId(),
+        oldStatus,
+        incident.getStatus(),
+        "Cancelled: " + request.reason());
     return toDetailResponse(saved);
   }
 
@@ -445,17 +474,22 @@ public class IncidentApplicationService {
             clock.instant(),
             request.remarks()));
 
-    for (UserId recipient : java.util.stream.Stream.of(incident.getReporterId(), incident.getAssigneeId())
-        .filter(java.util.Objects::nonNull)
-        .distinct()
-        .toList()) {
+    for (UserId recipient :
+        java.util.stream.Stream.of(incident.getReporterId(), incident.getAssigneeId())
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList()) {
       notifyChannels(
           NotificationMessage.of(
               recipient,
               incident.getId(),
               "PRIORITY_CHANGED",
               "Priority Changed: " + incident.getIncidentNumber(),
-              "Priority changed from " + oldPriority + " to " + request.priority() + ": "
+              "Priority changed from "
+                  + oldPriority
+                  + " to "
+                  + request.priority()
+                  + ": "
                   + request.remarks()));
     }
 
@@ -496,7 +530,8 @@ public class IncidentApplicationService {
         pageOfIncidents.totalPages());
   }
 
-  public CommentResponse addComment(UUID incidentId, AddCommentRequest request, String authorUsername) {
+  public CommentResponse addComment(
+      UUID incidentId, AddCommentRequest request, String authorUsername) {
     loadVisibleIncident(incidentId, loadUser(authorUsername));
 
     IncidentEntity incident =
@@ -513,7 +548,8 @@ public class IncidentApplicationService {
       throw new UnauthorizedOperationException("Employees cannot post internal comments");
     }
 
-    if (author.getRole() == Role.EMPLOYEE && !incident.getReporter().getId().equals(author.getId())) {
+    if (author.getRole() == Role.EMPLOYEE
+        && !incident.getReporter().getId().equals(author.getId())) {
       throw new UnauthorizedOperationException("Employees can only comment on their own incidents");
     }
 
@@ -577,7 +613,8 @@ public class IncidentApplicationService {
   public List<AuditLogResponse> getAuditLogs(UUID incidentId, String requesterUsername) {
     Incident incident = loadVisibleIncident(incidentId, loadUser(requesterUsername));
     Map<UserId, String> names = new HashMap<>();
-    Map<IncidentId, String> numbers = new HashMap<>(Map.of(incident.getId(), incident.getIncidentNumber()));
+    Map<IncidentId, String> numbers =
+        new HashMap<>(Map.of(incident.getId(), incident.getIncidentNumber()));
     return auditLogRepository.findByIncidentId(IncidentId.of(incidentId)).stream()
         .map(log -> toAuditResponse(log, names, numbers))
         .toList();
@@ -631,8 +668,10 @@ public class IncidentApplicationService {
   public List<SimilarIncidentResponse> findPossibleDuplicates(
       IncidentDraftRequest draft, String requesterUsername) {
     User requester = loadUser(requesterUsername);
-    String text = (draft.title() == null ? "" : draft.title()) + " "
-        + (draft.description() == null ? "" : draft.description());
+    String text =
+        (draft.title() == null ? "" : draft.title())
+            + " "
+            + (draft.description() == null ? "" : draft.description());
     if (text.isBlank()) {
       return List.of();
     }
@@ -671,7 +710,8 @@ public class IncidentApplicationService {
   }
 
   @Transactional(readOnly = true)
-  public List<SimilarIncidentResponse> getSimilarIncidents(UUID incidentId, String requesterUsername) {
+  public List<SimilarIncidentResponse> getSimilarIncidents(
+      UUID incidentId, String requesterUsername) {
     User requester = loadUser(requesterUsername);
     Incident target = loadVisibleIncident(incidentId, requester);
     String targetText = target.getTitle() + " " + target.getDescription();
@@ -709,7 +749,11 @@ public class IncidentApplicationService {
   }
 
   private void recordStatusChange(
-      IncidentId incidentId, UserId actorId, IncidentStatus oldStatus, IncidentStatus newStatus, String remarks) {
+      IncidentId incidentId,
+      UserId actorId,
+      IncidentStatus oldStatus,
+      IncidentStatus newStatus,
+      String remarks) {
     auditLogRepository.save(
         AuditLog.create(
             incidentId,
@@ -801,14 +845,17 @@ public class IncidentApplicationService {
     User reporter = userRepository.findById(incident.getReporterId()).orElse(null);
     UserSummaryResponse reporterDto =
         reporter != null
-            ? new UserSummaryResponse(reporter.getId().getValue(), reporter.getFullName(), reporter.getEmail())
+            ? new UserSummaryResponse(
+                reporter.getId().getValue(), reporter.getFullName(), reporter.getEmail())
             : new UserSummaryResponse(incident.getReporterId().getValue(), "Unknown", "");
 
     UserSummaryResponse assigneeDto = null;
     if (incident.getAssigneeId() != null) {
       User assignee = userRepository.findById(incident.getAssigneeId()).orElse(null);
       if (assignee != null) {
-        assigneeDto = new UserSummaryResponse(assignee.getId().getValue(), assignee.getFullName(), assignee.getEmail());
+        assigneeDto =
+            new UserSummaryResponse(
+                assignee.getId().getValue(), assignee.getFullName(), assignee.getEmail());
       }
     }
 
@@ -840,7 +887,10 @@ public class IncidentApplicationService {
         incident.getUpdatedAt(),
         incident.getAffectedServiceId() == null
             ? null
-            : serviceRepository.findById(incident.getAffectedServiceId()).map(this::toServiceResponse).orElse(null),
+            : serviceRepository
+                .findById(incident.getAffectedServiceId())
+                .map(this::toServiceResponse)
+                .orElse(null),
         incident.getRespondedAt(),
         incident.getEscalatedAt(),
         incident.getFeedbackRating(),
@@ -848,7 +898,8 @@ public class IncidentApplicationService {
   }
 
   private ServiceResponse toServiceResponse(ItServiceEntity s) {
-    return new ServiceResponse(s.getId(), s.getName(), s.getDescription(), s.getCriticality(), s.isActive());
+    return new ServiceResponse(
+        s.getId(), s.getName(), s.getDescription(), s.getCriticality(), s.isActive());
   }
 
   private IncidentSummaryResponse toSummaryResponse(
@@ -870,6 +921,8 @@ public class IncidentApplicationService {
         assigneeName,
         incident.getSlaWindow() != null ? incident.getSlaWindow().getStatus() : null,
         incident.getCreatedAt(),
-        incident.getAffectedServiceId() != null ? serviceNames.get(incident.getAffectedServiceId()) : null);
+        incident.getAffectedServiceId() != null
+            ? serviceNames.get(incident.getAffectedServiceId())
+            : null);
   }
 }

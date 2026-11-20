@@ -51,7 +51,9 @@ class IncidentControllerTest {
   @MockBean private DomainUserDetailsService userDetailsService;
 
   @Test
-  @WithMockUser(username = "emp", roles = {"EMPLOYEE"})
+  @WithMockUser(
+      username = "emp",
+      roles = {"EMPLOYEE"})
   @DisplayName("POST /api/v1/incidents creates ticket and returns 201 Created")
   void testCreateIncident() throws Exception {
     UUID incidentId = UUID.randomUUID();
@@ -108,11 +110,12 @@ class IncidentControllerTest {
   }
 
   @Test
-  @WithMockUser(username = "emp", roles = {"EMPLOYEE"})
+  @WithMockUser(
+      username = "emp",
+      roles = {"EMPLOYEE"})
   @DisplayName("POST /api/v1/incidents fails with 400 Bad Request on invalid input")
   void testCreateIncidentValidationFailure() throws Exception {
-    CreateIncidentRequest invalid =
-        new CreateIncidentRequest("", "", null, null, null);
+    CreateIncidentRequest invalid = new CreateIncidentRequest("", "", null, null, null);
 
     mockMvc
         .perform(
@@ -125,17 +128,20 @@ class IncidentControllerTest {
   @Test
   @WithMockUser(username = "emp", roles = "EMPLOYEE")
   void malformedRequestsReturnBadRequest() throws Exception {
-    mockMvc.perform(post("/api/v1/incidents").contentType(MediaType.APPLICATION_JSON)
-        .content("{\"category\":\"INVALID\"}"))
+    mockMvc
+        .perform(
+            post("/api/v1/incidents")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"category\":\"INVALID\"}"))
         .andExpect(status().isBadRequest());
-    mockMvc.perform(get("/api/v1/incidents/not-a-uuid"))
-        .andExpect(status().isBadRequest());
-    mockMvc.perform(get("/api/v1/incidents?status=INVALID"))
-        .andExpect(status().isBadRequest());
+    mockMvc.perform(get("/api/v1/incidents/not-a-uuid")).andExpect(status().isBadRequest());
+    mockMvc.perform(get("/api/v1/incidents?status=INVALID")).andExpect(status().isBadRequest());
   }
 
   @Test
-  @WithMockUser(username = "tech_lead", roles = {"TECHNICIAN"})
+  @WithMockUser(
+      username = "tech_lead",
+      roles = {"TECHNICIAN"})
   @DisplayName("GET /api/v1/incidents returns paged list")
   void testListIncidents() throws Exception {
     when(incidentService.listIncidents(any(), eq(0), eq(20), eq("tech_lead")))

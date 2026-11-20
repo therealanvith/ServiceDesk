@@ -1,8 +1,6 @@
 package com.servicedesk.domain.priority;
 
-/**
- * Incident priority classification levels.
- */
+/** Incident priority classification levels. */
 public enum Priority {
   P1_CRITICAL(1),
   P2_HIGH(2),
@@ -20,8 +18,8 @@ public enum Priority {
   }
 
   /**
-   * Escalates priority by one level towards P1_CRITICAL.
-   * If already P1_CRITICAL, remains P1_CRITICAL.
+   * Escalates priority by one level towards P1_CRITICAL. If already P1_CRITICAL, remains
+   * P1_CRITICAL.
    */
   public Priority escalate() {
     return switch (this) {

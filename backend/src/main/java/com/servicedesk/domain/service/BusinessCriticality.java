@@ -1,8 +1,8 @@
 package com.servicedesk.domain.service;
 
 /**
- * How important an IT service is to the organisation. Feeds into incident priority: an outage of
- * a critical service (payments, sign-in) outranks the same symptoms on a low-criticality one.
+ * How important an IT service is to the organisation. Feeds into incident priority: an outage of a
+ * critical service (payments, sign-in) outranks the same symptoms on a low-criticality one.
  */
 public enum BusinessCriticality {
   LOW(-1),

@@ -61,7 +61,7 @@ Ensure the following tools are installed on your workstation:
    - Spring Boot Actuator: [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
    - PostgreSQL Database: `localhost:5432` (`servicedesk` / `servicedesk_user` / `servicedesk_dev_password`)
 
-   **Pre-seeded Demo Accounts** (all passwords: `password123`):
+   **Pre-seeded Demo Accounts** (all passwords: `test`):
    | Username | Role | Full Name | Domain Focus / Skills |
    | :--- | :--- | :--- | :--- |
    | `emp` | `EMPLOYEE` | Employee | Reports and follows their own tickets |
@@ -85,11 +85,11 @@ Ensure the following tools are installed on your workstation:
    **Who sees what**: employees see the tickets they reported, technicians the tickets assigned
    to them, administrators and root everything. Full matrix in [`docs/security.md`](docs/security.md).
 
-   > **Note on Existing Databases**: If you previously launched Docker containers before Flyway migration `V6`, you can immediately apply the verified `password123` credentials to your running database:
+   > **Note on Existing Databases**: If you previously launched Docker containers before Flyway migration `V12`, you can immediately apply the `test` password to your running database:
    > ```bash
    > docker compose exec -T postgres psql -U servicedesk_user -d servicedesk < scripts/seed-demo-users.sql
    > ```
-   > Or restart the backend service to let Flyway execute `V6__fix_demo_user_passwords.sql` automatically:
+   > Or restart the backend service to let Flyway execute `V12__demo_password_test.sql` automatically:
    > ```bash
    > docker compose restart backend
    > ```

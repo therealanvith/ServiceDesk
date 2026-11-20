@@ -38,7 +38,11 @@ public class ItServiceEntity {
   protected ItServiceEntity() {}
 
   public ItServiceEntity(
-      UUID id, String name, String description, BusinessCriticality criticality, Instant createdAt) {
+      UUID id,
+      String name,
+      String description,
+      BusinessCriticality criticality,
+      Instant createdAt) {
     this.id = id;
     this.name = name;
     this.description = description;

@@ -6,9 +6,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Immutable audit ledger entry capturing incident lifecycle actions.
- */
+/** Immutable audit ledger entry capturing incident lifecycle actions. */
 public record AuditLog(
     UUID id,
     IncidentId incidentId,

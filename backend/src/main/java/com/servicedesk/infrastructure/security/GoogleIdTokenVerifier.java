@@ -28,7 +28,8 @@ public class GoogleIdTokenVerifier {
   public record GoogleIdentity(String subject, String email, String name) {}
 
   private static final String JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
-  private static final Set<String> ISSUERS = Set.of("https://accounts.google.com", "accounts.google.com");
+  private static final Set<String> ISSUERS =
+      Set.of("https://accounts.google.com", "accounts.google.com");
 
   private final String clientId;
   private final List<String> allowedDomains;

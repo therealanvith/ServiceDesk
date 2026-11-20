@@ -6,8 +6,8 @@ import com.servicedesk.domain.user.UserId;
 import java.util.Objects;
 
 /**
- * State when an incident is awaiting information from the reporter.
- * SLA resolution timer is paused in this state.
+ * State when an incident is awaiting information from the reporter. SLA resolution timer is paused
+ * in this state.
  */
 public class PendingInfoState implements IncidentState {
 

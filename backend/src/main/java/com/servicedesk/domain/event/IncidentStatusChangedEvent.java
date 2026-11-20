@@ -6,9 +6,7 @@ import com.servicedesk.domain.user.UserId;
 import java.time.Instant;
 import java.util.Objects;
 
-/**
- * Event published when an incident transitions between lifecycle states.
- */
+/** Event published when an incident transitions between lifecycle states. */
 public record IncidentStatusChangedEvent(
     IncidentId incidentId,
     IncidentStatus oldStatus,

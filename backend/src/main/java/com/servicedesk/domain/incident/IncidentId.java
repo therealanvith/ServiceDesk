@@ -4,9 +4,7 @@ import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
-/**
- * Value object representing a unique incident identity.
- */
+/** Value object representing a unique incident identity. */
 public final class IncidentId implements Serializable {
 
   private final UUID value;

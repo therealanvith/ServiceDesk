@@ -23,18 +23,21 @@ public class MatrixPriorityStrategy implements PriorityCalculationStrategy {
     Objects.requireNonNull(urgency, "Urgency must not be null");
 
     return switch (impact) {
-      case HIGH -> switch (urgency) {
-        case HIGH, MEDIUM -> Priority.P1_CRITICAL;
-        case LOW -> Priority.P2_HIGH;
-      };
-      case MEDIUM -> switch (urgency) {
-        case HIGH -> Priority.P2_HIGH;
-        case MEDIUM, LOW -> Priority.P3_MEDIUM;
-      };
-      case LOW -> switch (urgency) {
-        case HIGH -> Priority.P3_MEDIUM;
-        case MEDIUM, LOW -> Priority.P4_LOW;
-      };
+      case HIGH ->
+          switch (urgency) {
+            case HIGH, MEDIUM -> Priority.P1_CRITICAL;
+            case LOW -> Priority.P2_HIGH;
+          };
+      case MEDIUM ->
+          switch (urgency) {
+            case HIGH -> Priority.P2_HIGH;
+            case MEDIUM, LOW -> Priority.P3_MEDIUM;
+          };
+      case LOW ->
+          switch (urgency) {
+            case HIGH -> Priority.P3_MEDIUM;
+            case MEDIUM, LOW -> Priority.P4_LOW;
+          };
     };
   }
 }

@@ -5,9 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
-/**
- * Value object tracking Service Level Agreement response and resolution windows.
- */
+/** Value object tracking Service Level Agreement response and resolution windows. */
 public class SlaWindow {
 
   private final Instant responseDeadline;
@@ -24,8 +22,10 @@ public class SlaWindow {
       Duration pausedDuration,
       Instant pausedAt,
       SlaStatus status) {
-    this.responseDeadline = Objects.requireNonNull(responseDeadline, "Response deadline must not be null");
-    this.resolutionDeadline = Objects.requireNonNull(resolutionDeadline, "Resolution deadline must not be null");
+    this.responseDeadline =
+        Objects.requireNonNull(responseDeadline, "Response deadline must not be null");
+    this.resolutionDeadline =
+        Objects.requireNonNull(resolutionDeadline, "Resolution deadline must not be null");
     this.pausedDuration = pausedDuration != null ? pausedDuration : Duration.ZERO;
     this.pausedAt = pausedAt;
     this.status = status != null ? status : SlaStatus.WITHIN_SLA;

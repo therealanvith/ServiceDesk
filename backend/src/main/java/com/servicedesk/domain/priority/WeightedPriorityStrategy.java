@@ -16,10 +16,10 @@ import java.util.Objects;
  * score >= 8 -> P1,  7 -> P2,  5..6 -> P3,  <= 4 -> P4
  * </pre>
  *
- * <p>Impact is weighted double because it measures how many people are affected, which matters
- * more than how quickly one person needs a fix. With a MEDIUM-criticality service the result is
- * identical to {@link MatrixPriorityStrategy}, so criticality only ever shifts a ticket relative
- * to that well-understood baseline.
+ * <p>Impact is weighted double because it measures how many people are affected, which matters more
+ * than how quickly one person needs a fix. With a MEDIUM-criticality service the result is
+ * identical to {@link MatrixPriorityStrategy}, so criticality only ever shifts a ticket relative to
+ * that well-understood baseline.
  */
 public class WeightedPriorityStrategy implements PriorityCalculationStrategy {
 
@@ -35,7 +35,8 @@ public class WeightedPriorityStrategy implements PriorityCalculationStrategy {
     Objects.requireNonNull(urgency, "Urgency must not be null");
     BusinessCriticality effective = criticality != null ? criticality : BusinessCriticality.MEDIUM;
 
-    int score = 2 * weight(impact.name()) + weight(urgency.name()) + effective.getPriorityAdjustment();
+    int score =
+        2 * weight(impact.name()) + weight(urgency.name()) + effective.getPriorityAdjustment();
     if (score >= 8) {
       return Priority.P1_CRITICAL;
     }

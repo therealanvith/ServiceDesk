@@ -48,7 +48,8 @@ class IncidentStateTest {
   }
 
   @Test
-  @DisplayName("Full happy-path lifecycle: REPORTED -> ASSIGNED -> IN_PROGRESS -> PENDING_INFO -> IN_PROGRESS -> RESOLVED -> CLOSED")
+  @DisplayName(
+      "Full happy-path lifecycle: REPORTED -> ASSIGNED -> IN_PROGRESS -> PENDING_INFO -> IN_PROGRESS -> RESOLVED -> CLOSED")
   void testFullLifecycleHappyPath() {
     Incident incident = createSampleIncident();
     assertEquals(IncidentStatus.REPORTED, incident.getStatus());
@@ -153,6 +154,7 @@ class IncidentStateTest {
     assertThrows(InvalidStateTransitionException.class, () -> incident.assign(tech2, reporterId));
     assertThrows(InvalidStateTransitionException.class, () -> incident.startWork(tech1));
     assertThrows(InvalidStateTransitionException.class, () -> incident.resolve("New", tech1));
-    assertThrows(InvalidStateTransitionException.class, () -> incident.cancel("Reason", reporterId));
+    assertThrows(
+        InvalidStateTransitionException.class, () -> incident.cancel("Reason", reporterId));
   }
 }

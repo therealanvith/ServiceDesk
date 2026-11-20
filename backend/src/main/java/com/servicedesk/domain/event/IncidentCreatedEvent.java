@@ -6,14 +6,9 @@ import com.servicedesk.domain.user.UserId;
 import java.time.Instant;
 import java.util.Objects;
 
-/**
- * Event published when a new incident is created.
- */
+/** Event published when a new incident is created. */
 public record IncidentCreatedEvent(
-    IncidentId incidentId,
-    UserId reporterId,
-    Priority priority,
-    Instant timestamp)
+    IncidentId incidentId, UserId reporterId, Priority priority, Instant timestamp)
     implements DomainEvent {
 
   public IncidentCreatedEvent {

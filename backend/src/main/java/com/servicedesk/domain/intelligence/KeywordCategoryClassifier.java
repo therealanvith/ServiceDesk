@@ -14,9 +14,9 @@ import java.util.Set;
  * Rule-based classifier: scores each category by the domain keywords found in the ticket text.
  * Title words count double because reporters tend to put the core symptom there.
  *
- * <p>Deterministic and explainable (it returns the words it matched), which matters more for a
- * help desk than a few points of accuracy. A trained model could replace it behind the same
- * {@link CategorySuggestionStrategy} interface.
+ * <p>Deterministic and explainable (it returns the words it matched), which matters more for a help
+ * desk than a few points of accuracy. A trained model could replace it behind the same {@link
+ * CategorySuggestionStrategy} interface.
  */
 public class KeywordCategoryClassifier implements CategorySuggestionStrategy {
 
@@ -25,38 +25,191 @@ public class KeywordCategoryClassifier implements CategorySuggestionStrategy {
   private static final Map<Category, Set<String>> KEYWORDS = new EnumMap<>(Category.class);
 
   static {
-    KEYWORDS.put(Category.NETWORK, Set.of(
-        "network", "wifi", "wi-fi", "wireless", "internet", "ethernet", "lan", "vpn", "dns",
-        "dhcp", "router", "switch", "gateway", "ping", "latency", "packet", "connectivity",
-        "offline", "firewall", "bandwidth", "ip"));
-    KEYWORDS.put(Category.HARDWARE, Set.of(
-        "laptop", "desktop", "monitor", "keyboard", "mouse", "printer", "projector", "screen",
-        "battery", "charger", "hardware", "disk", "ram", "fan", "overheating", "scanner",
-        "headset", "webcam", "power", "device", "bulb", "cable"));
-    KEYWORDS.put(Category.SOFTWARE, Set.of(
-        "software", "install", "installation", "update", "upgrade", "license", "crash",
-        "crashes", "freezes", "bug", "excel", "word", "office", "windows", "macos", "driver",
-        "antivirus", "patch", "version"));
-    KEYWORDS.put(Category.ACCESS, Set.of(
-        "password", "login", "log-in", "signin", "sign-in", "locked", "lockout", "account",
-        "access", "permission", "permissions", "mfa", "2fa", "otp", "sso", "authentication",
-        "unauthorized", "credentials", "reset"));
-    KEYWORDS.put(Category.DATABASE, Set.of(
-        "database", "db", "sql", "query", "queries", "postgres", "mysql", "oracle", "table",
-        "deadlock", "replication", "backup", "restore", "schema", "records"));
-    KEYWORDS.put(Category.CLOUD, Set.of(
-        "cloud", "aws", "azure", "gcp", "kubernetes", "container", "docker", "vm", "instance",
-        "serverless", "saas", "tenant", "region"));
-    KEYWORDS.put(Category.SECURITY, Set.of(
-        "security", "phishing", "malware", "virus", "ransomware", "breach", "suspicious",
-        "spam", "hacked", "compromised", "vulnerability", "leak", "attack", "scam"));
-    KEYWORDS.put(Category.APPLICATION, Set.of(
-        "application", "app", "portal", "website", "page", "payment", "transaction",
-        "checkout", "erp", "lms", "moodle", "error", "500", "timeout", "slow", "unavailable",
-        "submit", "form", "email", "outlook", "teams"));
-    KEYWORDS.put(Category.STORAGE, Set.of(
-        "storage", "drive", "onedrive", "sharepoint", "quota", "files", "file", "folder",
-        "upload", "download", "share", "nas", "space", "sync"));
+    KEYWORDS.put(
+        Category.NETWORK,
+        Set.of(
+            "network",
+            "wifi",
+            "wi-fi",
+            "wireless",
+            "internet",
+            "ethernet",
+            "lan",
+            "vpn",
+            "dns",
+            "dhcp",
+            "router",
+            "switch",
+            "gateway",
+            "ping",
+            "latency",
+            "packet",
+            "connectivity",
+            "offline",
+            "firewall",
+            "bandwidth",
+            "ip"));
+    KEYWORDS.put(
+        Category.HARDWARE,
+        Set.of(
+            "laptop",
+            "desktop",
+            "monitor",
+            "keyboard",
+            "mouse",
+            "printer",
+            "projector",
+            "screen",
+            "battery",
+            "charger",
+            "hardware",
+            "disk",
+            "ram",
+            "fan",
+            "overheating",
+            "scanner",
+            "headset",
+            "webcam",
+            "power",
+            "device",
+            "bulb",
+            "cable"));
+    KEYWORDS.put(
+        Category.SOFTWARE,
+        Set.of(
+            "software",
+            "install",
+            "installation",
+            "update",
+            "upgrade",
+            "license",
+            "crash",
+            "crashes",
+            "freezes",
+            "bug",
+            "excel",
+            "word",
+            "office",
+            "windows",
+            "macos",
+            "driver",
+            "antivirus",
+            "patch",
+            "version"));
+    KEYWORDS.put(
+        Category.ACCESS,
+        Set.of(
+            "password",
+            "login",
+            "log-in",
+            "signin",
+            "sign-in",
+            "locked",
+            "lockout",
+            "account",
+            "access",
+            "permission",
+            "permissions",
+            "mfa",
+            "2fa",
+            "otp",
+            "sso",
+            "authentication",
+            "unauthorized",
+            "credentials",
+            "reset"));
+    KEYWORDS.put(
+        Category.DATABASE,
+        Set.of(
+            "database",
+            "db",
+            "sql",
+            "query",
+            "queries",
+            "postgres",
+            "mysql",
+            "oracle",
+            "table",
+            "deadlock",
+            "replication",
+            "backup",
+            "restore",
+            "schema",
+            "records"));
+    KEYWORDS.put(
+        Category.CLOUD,
+        Set.of(
+            "cloud",
+            "aws",
+            "azure",
+            "gcp",
+            "kubernetes",
+            "container",
+            "docker",
+            "vm",
+            "instance",
+            "serverless",
+            "saas",
+            "tenant",
+            "region"));
+    KEYWORDS.put(
+        Category.SECURITY,
+        Set.of(
+            "security",
+            "phishing",
+            "malware",
+            "virus",
+            "ransomware",
+            "breach",
+            "suspicious",
+            "spam",
+            "hacked",
+            "compromised",
+            "vulnerability",
+            "leak",
+            "attack",
+            "scam"));
+    KEYWORDS.put(
+        Category.APPLICATION,
+        Set.of(
+            "application",
+            "app",
+            "portal",
+            "website",
+            "page",
+            "payment",
+            "transaction",
+            "checkout",
+            "erp",
+            "lms",
+            "moodle",
+            "error",
+            "500",
+            "timeout",
+            "slow",
+            "unavailable",
+            "submit",
+            "form",
+            "email",
+            "outlook",
+            "teams"));
+    KEYWORDS.put(
+        Category.STORAGE,
+        Set.of(
+            "storage",
+            "drive",
+            "onedrive",
+            "sharepoint",
+            "quota",
+            "files",
+            "file",
+            "folder",
+            "upload",
+            "download",
+            "share",
+            "nas",
+            "space",
+            "sync"));
   }
 
   @Override
@@ -93,7 +246,10 @@ public class KeywordCategoryClassifier implements CategorySuggestionStrategy {
   }
 
   private static void accumulate(
-      List<String> words, int weight, Map<Category, Integer> scores, Map<Category, Set<String>> evidence) {
+      List<String> words,
+      int weight,
+      Map<Category, Integer> scores,
+      Map<Category, Set<String>> evidence) {
     for (String word : words) {
       for (Map.Entry<Category, Set<String>> entry : KEYWORDS.entrySet()) {
         if (entry.getValue().contains(word)) {

@@ -23,9 +23,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-/**
- * Spring Security configuration for ServiceDesk REST API.
- */
+/** Spring Security configuration for ServiceDesk REST API. */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -35,8 +33,7 @@ public class SecurityConfig {
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
   public SecurityConfig(
-      @Value("${app.security.cors.allowed-origins:http://localhost:3000}")
-          String allowedOriginsStr,
+      @Value("${app.security.cors.allowed-origins:http://localhost:3000}") String allowedOriginsStr,
       JwtAuthenticationFilter jwtAuthenticationFilter) {
     this.allowedOrigins =
         Arrays.stream(allowedOriginsStr.split(","))
@@ -68,8 +65,7 @@ public class SecurityConfig {
                             writeError(response, 401, "Please sign in again to continue"))
                     .accessDeniedHandler(
                         (request, response, exception) ->
-                            writeError(
-                                response, 403, "You don't have permission to do that")))
+                            writeError(response, 403, "You don't have permission to do that")))
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

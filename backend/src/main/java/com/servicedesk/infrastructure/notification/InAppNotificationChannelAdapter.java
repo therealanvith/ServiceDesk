@@ -14,7 +14,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Adapter implementing NotificationChannel that stores notifications in the database for in-app UI delivery.
+ * Adapter implementing NotificationChannel that stores notifications in the database for in-app UI
+ * delivery.
  */
 @Component
 public class InAppNotificationChannelAdapter implements NotificationChannel {
@@ -40,7 +41,8 @@ public class InAppNotificationChannelAdapter implements NotificationChannel {
       return;
     }
 
-    UserEntity recipient = userJpaRepository.findById(message.recipientId().getValue()).orElse(null);
+    UserEntity recipient =
+        userJpaRepository.findById(message.recipientId().getValue()).orElse(null);
     if (recipient == null) {
       return;
     }

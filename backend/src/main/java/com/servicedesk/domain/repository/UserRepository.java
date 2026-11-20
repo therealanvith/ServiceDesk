@@ -5,9 +5,7 @@ import com.servicedesk.domain.user.UserId;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Domain port for user queries and persistence.
- */
+/** Domain port for user queries and persistence. */
 public interface UserRepository {
 
   Optional<User> findById(UserId id);

@@ -21,8 +21,8 @@ import com.servicedesk.infrastructure.security.GoogleIdTokenVerifier;
 import com.servicedesk.infrastructure.security.GoogleIdTokenVerifier.GoogleIdentity;
 import com.servicedesk.infrastructure.security.JwtTokenProvider;
 import java.time.Clock;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -60,7 +60,11 @@ public class UserApplicationService {
     }
     UserAccountResponse created =
         createAccount(
-            request.username(), request.fullName(), request.email(), Role.EMPLOYEE, request.password());
+            request.username(),
+            request.fullName(),
+            request.email(),
+            Role.EMPLOYEE,
+            request.password());
     UserEntity user = userJpaRepository.findById(created.id()).orElseThrow();
     return issueSession(user);
   }
@@ -116,7 +120,10 @@ public class UserApplicationService {
             .orElse(null);
 
     if (user == null) {
-      String name = identity.name() != null && !identity.name().isBlank() ? identity.name() : identity.email();
+      String name =
+          identity.name() != null && !identity.name().isBlank()
+              ? identity.name()
+              : identity.email();
       user =
           new UserEntity(
               UUID.randomUUID(),
@@ -156,7 +163,11 @@ public class UserApplicationService {
   public UserAccountResponse createUser(CreateUserRequest request, String actorUsername) {
     requireMayGrant(actorRole(actorUsername), request.role());
     return createAccount(
-        request.username(), request.fullName(), request.email(), request.role(), request.password());
+        request.username(),
+        request.fullName(),
+        request.email(),
+        request.role(),
+        request.password());
   }
 
   private UserAccountResponse createAccount(
@@ -164,7 +175,8 @@ public class UserApplicationService {
     if (userJpaRepository.existsByUsername(username)) {
       throw new IllegalArgumentException("That username is already taken");
     }
-    String email = rawEmail == null || rawEmail.isBlank() ? null : rawEmail.trim().toLowerCase(Locale.ROOT);
+    String email =
+        rawEmail == null || rawEmail.isBlank() ? null : rawEmail.trim().toLowerCase(Locale.ROOT);
     if (email != null && userJpaRepository.findByEmailIgnoreCase(email).isPresent()) {
       throw new IllegalArgumentException("That email is already used by another account");
     }
@@ -242,7 +254,11 @@ public class UserApplicationService {
   }
 
   private String uniqueUsername(String email) {
-    String base = email.substring(0, email.indexOf('@')).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "");
+    String base =
+        email
+            .substring(0, email.indexOf('@'))
+            .toLowerCase(Locale.ROOT)
+            .replaceAll("[^a-z0-9._-]", "");
     if (base.length() < 3) {
       base = "user";
     }
@@ -301,8 +317,8 @@ public class UserApplicationService {
     }
     // Retain existing rows to avoid insert-before-delete unique constraint failures.
     user.getSkills().removeIf(skill -> !newSkills.contains(skill.getCategory()));
-    Set<Category> existing = user.getSkills().stream()
-        .map(UserSkillEntity::getCategory).collect(Collectors.toSet());
+    Set<Category> existing =
+        user.getSkills().stream().map(UserSkillEntity::getCategory).collect(Collectors.toSet());
     for (Category category : newSkills) {
       if (!existing.contains(category)) {
         user.getSkills().add(new UserSkillEntity(UUID.randomUUID(), user, category));
@@ -317,7 +333,12 @@ public class UserApplicationService {
     Set<Category> skills =
         user.getSkills().stream().map(UserSkillEntity::getCategory).collect(Collectors.toSet());
     return new UserProfileResponse(
-        user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), user.getRole(), skills);
+        user.getId(),
+        user.getUsername(),
+        user.getFullName(),
+        user.getEmail(),
+        user.getRole(),
+        skills);
   }
 
   private TechnicianResponse toTechnicianResponse(UserEntity tech) {

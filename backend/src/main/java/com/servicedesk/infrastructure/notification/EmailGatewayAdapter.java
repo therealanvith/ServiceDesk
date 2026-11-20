@@ -8,9 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/**
- * Adapter implementing NotificationChannel that formats and simulates email dispatch.
- */
+/** Adapter implementing NotificationChannel that formats and simulates email dispatch. */
 @Component
 public class EmailGatewayAdapter implements NotificationChannel {
 

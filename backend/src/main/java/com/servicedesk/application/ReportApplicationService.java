@@ -72,14 +72,19 @@ public class ReportApplicationService {
 
     long resolved =
         all.stream()
-            .filter(i -> i.getStatus() == IncidentStatus.RESOLVED || i.getStatus() == IncidentStatus.CLOSED)
+            .filter(
+                i ->
+                    i.getStatus() == IncidentStatus.RESOLVED
+                        || i.getStatus() == IncidentStatus.CLOSED)
             .count();
     long breached = all.stream().filter(i -> slaStatus(i) == SlaStatus.BREACHED).count();
-    long atRisk = open.stream().filter(i -> slaStatus(i) == SlaStatus.WARNING_BREACH_IMMINENT).count();
+    long atRisk =
+        open.stream().filter(i -> slaStatus(i) == SlaStatus.WARNING_BREACH_IMMINENT).count();
     long escalated = all.stream().filter(i -> i.getEscalatedAt() != null).count();
     long criticalOpen = open.stream().filter(i -> i.getPriority() == Priority.P1_CRITICAL).count();
 
-    // Response SLA: of tickets that have been responded to (or are overdue for it), how many in time.
+    // Response SLA: of tickets that have been responded to (or are overdue for it), how many in
+    // time.
     List<Incident> responseMeasured =
         all.stream()
             .filter(i -> i.getSlaWindow() != null)
@@ -96,19 +101,30 @@ public class ReportApplicationService {
     List<Integer> ratings =
         all.stream().map(Incident::getFeedbackRating).filter(Objects::nonNull).toList();
     Double averageRating =
-        ratings.isEmpty() ? null : round1(ratings.stream().mapToInt(Integer::intValue).average().orElse(0));
+        ratings.isEmpty()
+            ? null
+            : round1(ratings.stream().mapToInt(Integer::intValue).average().orElse(0));
 
     Overview overview =
         new Overview(
-            all.size(), open.size(), criticalOpen, resolved, breached, atRisk, escalated,
-            responseMetPercent, averageRating, ratings.size());
+            all.size(),
+            open.size(),
+            criticalOpen,
+            resolved,
+            breached,
+            atRisk,
+            escalated,
+            responseMetPercent,
+            averageRating,
+            ratings.size());
 
     Map<UUID, String> serviceNames = new HashMap<>();
     services.findAll().forEach(s -> serviceNames.put(s.getId(), s.getName()));
     Function<Incident, String> serviceOf =
-        i -> i.getAffectedServiceId() == null
-            ? "Not specified"
-            : serviceNames.getOrDefault(i.getAffectedServiceId(), "Retired service");
+        i ->
+            i.getAffectedServiceId() == null
+                ? "Not specified"
+                : serviceNames.getOrDefault(i.getAffectedServiceId(), "Retired service");
 
     List<ServiceLoad> byService = serviceLoad(all, serviceOf);
     List<ServiceLoad> correlated =
@@ -163,22 +179,38 @@ public class ReportApplicationService {
                   tech.getUsername(),
                   tech.getFullName(),
                   theirs.stream().filter(i -> isOpen(i.getStatus())).count(),
-                  theirs.stream().filter(i -> isOpen(i.getStatus()) && slaStatus(i) == SlaStatus.BREACHED).count(),
                   theirs.stream()
-                      .filter(i -> i.getStatus() == IncidentStatus.RESOLVED || i.getStatus() == IncidentStatus.CLOSED)
+                      .filter(i -> isOpen(i.getStatus()) && slaStatus(i) == SlaStatus.BREACHED)
+                      .count(),
+                  theirs.stream()
+                      .filter(
+                          i ->
+                              i.getStatus() == IncidentStatus.RESOLVED
+                                  || i.getStatus() == IncidentStatus.CLOSED)
                       .count(),
                   tech.isAvailable());
             })
-        .sorted(Comparator.comparingLong(TechnicianLoad::active).reversed().thenComparing(TechnicianLoad::fullName))
+        .sorted(
+            Comparator.comparingLong(TechnicianLoad::active)
+                .reversed()
+                .thenComparing(TechnicianLoad::fullName))
         .toList();
   }
 
-  private static List<ServiceLoad> serviceLoad(List<Incident> list, Function<Incident, String> serviceOf) {
+  private static List<ServiceLoad> serviceLoad(
+      List<Incident> list, Function<Incident, String> serviceOf) {
     Map<String, List<Incident>> grouped = list.stream().collect(Collectors.groupingBy(serviceOf));
     return grouped.entrySet().stream()
-        .map(e -> new ServiceLoad(e.getKey(), e.getValue().size(),
-            e.getValue().stream().filter(i -> isOpen(i.getStatus())).count()))
-        .sorted(Comparator.comparingLong(ServiceLoad::total).reversed().thenComparing(ServiceLoad::service))
+        .map(
+            e ->
+                new ServiceLoad(
+                    e.getKey(),
+                    e.getValue().size(),
+                    e.getValue().stream().filter(i -> isOpen(i.getStatus())).count()))
+        .sorted(
+            Comparator.comparingLong(ServiceLoad::total)
+                .reversed()
+                .thenComparing(ServiceLoad::service))
         .toList();
   }
 

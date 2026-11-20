@@ -29,9 +29,7 @@ import java.util.Set;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
-/**
- * Hexagonal persistence adapter implementing the domain IncidentRepository port.
- */
+/** Hexagonal persistence adapter implementing the domain IncidentRepository port. */
 @Component
 public class JpaIncidentRepositoryAdapter implements IncidentRepository {
 
@@ -90,10 +88,12 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
             predicates.add(cb.equal(root.get("category"), filter.category()));
           }
           if (filter.assigneeId() != null) {
-            predicates.add(cb.equal(root.get("assignee").get("id"), filter.assigneeId().getValue()));
+            predicates.add(
+                cb.equal(root.get("assignee").get("id"), filter.assigneeId().getValue()));
           }
           if (filter.reporterId() != null) {
-            predicates.add(cb.equal(root.get("reporter").get("id"), filter.reporterId().getValue()));
+            predicates.add(
+                cb.equal(root.get("reporter").get("id"), filter.reporterId().getValue()));
           }
           if (filter.slaStatus() != null) {
             predicates.add(cb.equal(root.get("slaStatus"), filter.slaStatus()));
@@ -179,9 +179,7 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
 
   private IncidentEntity toEntity(Incident incident) {
     IncidentEntity entity =
-        incidentJpaRepository
-            .findById(incident.getId().getValue())
-            .orElseGet(IncidentEntity::new);
+        incidentJpaRepository.findById(incident.getId().getValue()).orElseGet(IncidentEntity::new);
 
     entity.setId(incident.getId().getValue());
     entity.setIncidentNumber(incident.getIncidentNumber());
@@ -204,9 +202,7 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
 
     if (incident.getAssigneeId() != null) {
       UserEntity assignee =
-          userJpaRepository
-              .findById(incident.getAssigneeId().getValue())
-              .orElse(null);
+          userJpaRepository.findById(incident.getAssigneeId().getValue()).orElse(null);
       entity.setAssignee(assignee);
     } else {
       entity.setAssignee(null);

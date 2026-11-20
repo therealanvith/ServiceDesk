@@ -5,9 +5,7 @@ import com.servicedesk.domain.incident.IncidentStatus;
 import com.servicedesk.domain.user.UserId;
 import java.util.Objects;
 
-/**
- * State when an incident has been assigned to a technician.
- */
+/** State when an incident has been assigned to a technician. */
 public class AssignedState implements IncidentState {
 
   @Override

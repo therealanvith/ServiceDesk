@@ -30,7 +30,8 @@ public class SlaPolicyEntity {
 
   protected SlaPolicyEntity() {}
 
-  public SlaPolicyEntity(Priority priority, int responseMinutes, int resolutionMinutes, Instant updatedAt) {
+  public SlaPolicyEntity(
+      Priority priority, int responseMinutes, int resolutionMinutes, Instant updatedAt) {
     this.priority = priority;
     this.responseMinutes = responseMinutes;
     this.resolutionMinutes = resolutionMinutes;

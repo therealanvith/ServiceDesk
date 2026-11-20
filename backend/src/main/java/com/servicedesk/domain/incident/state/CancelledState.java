@@ -3,8 +3,7 @@ package com.servicedesk.domain.incident.state;
 import com.servicedesk.domain.incident.IncidentStatus;
 
 /**
- * Terminal state when an incident has been cancelled.
- * Strictly immutable; no transitions permitted.
+ * Terminal state when an incident has been cancelled. Strictly immutable; no transitions permitted.
  */
 public class CancelledState implements IncidentState {
 

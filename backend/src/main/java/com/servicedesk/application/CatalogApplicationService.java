@@ -55,7 +55,11 @@ public class CatalogApplicationService {
     }
     ItServiceEntity service =
         new ItServiceEntity(
-            UUID.randomUUID(), name, blankToNull(request.description()), request.criticality(), clock.instant());
+            UUID.randomUUID(),
+            name,
+            blankToNull(request.description()),
+            request.criticality(),
+            clock.instant());
     if (request.active() != null) {
       service.setActive(request.active());
     }
@@ -104,7 +108,8 @@ public class CatalogApplicationService {
   }
 
   private static ServiceResponse toResponse(ItServiceEntity s) {
-    return new ServiceResponse(s.getId(), s.getName(), s.getDescription(), s.getCriticality(), s.isActive());
+    return new ServiceResponse(
+        s.getId(), s.getName(), s.getDescription(), s.getCriticality(), s.isActive());
   }
 
   private static SlaPolicyResponse toResponse(SlaPolicy p) {

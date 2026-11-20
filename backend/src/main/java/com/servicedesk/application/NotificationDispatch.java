@@ -11,8 +11,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /**
  * Sends notifications once the surrounding transaction has committed.
  *
- * <p>Sending inside the business transaction is unsafe: a failing channel that touches the
- * database marks the whole transaction rollback-only, so the user's action would fail with an
+ * <p>Sending inside the business transaction is unsafe: a failing channel that touches the database
+ * marks the whole transaction rollback-only, so the user's action would fail with an
  * UnexpectedRollbackException even though the failure was "ignored". Deferring also guarantees
  * nobody is notified about a change that was later rolled back.
  */
