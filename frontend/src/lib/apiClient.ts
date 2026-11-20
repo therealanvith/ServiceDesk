@@ -608,6 +608,8 @@ export const api = {
     apiClient<IncidentDetail>(`/incidents/${id}/resolve`, post({ resolutionSummary })),
   closeIncident: (id: string, feedback?: { rating?: number; remarks?: string }) =>
     apiClient<IncidentDetail>(`/incidents/${id}/close`, post(feedback ?? {})),
+  reopenIncident: (id: string, reason: string) =>
+    apiClient<IncidentDetail>(`/incidents/${id}/reopen`, post({ reason })),
   cancelIncident: (id: string, reason: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/cancel`, post({ reason })),
   linkIncident: (id: string, parentId: string) =>

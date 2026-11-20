@@ -5,7 +5,7 @@ import { type IncidentDetail, api } from "@/lib/apiClient";
 import { type ReactNode, useEffect, useRef } from "react";
 
 /** Lifecycle moves that need a sentence before they go through. */
-export type TextDialogKind = "requestInfo" | "provideInfo" | "resolve" | "cancel";
+export type TextDialogKind = "requestInfo" | "provideInfo" | "resolve" | "reopen" | "cancel";
 
 export interface TextDialog {
   title: string;
@@ -46,6 +46,15 @@ export const TEXT_DIALOGS: Record<TextDialogKind, TextDialog> = {
     confirm: "Mark resolved",
     done: "Ticket resolved",
     submit: (id, text) => api.resolveIncident(id, text),
+  },
+  reopen: {
+    title: "Still not fixed?",
+    description: "The ticket goes back to the technician, who sees what you write here.",
+    label: "What is still wrong?",
+    placeholder: "For example: it worked for a day, then started dropping again.",
+    confirm: "Reopen ticket",
+    done: "Ticket reopened",
+    submit: (id, text) => api.reopenIncident(id, text),
   },
   cancel: {
     title: "Cancel ticket",

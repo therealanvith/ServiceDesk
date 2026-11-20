@@ -126,6 +126,7 @@ export default function IssuesPage() {
               type="search"
               placeholder="Search issues"
               aria-label="Search issues"
+              data-shortcut="search"
               value={filters.searchText}
               onChange={(e) => set({ searchText: e.target.value })}
             />

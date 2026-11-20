@@ -24,6 +24,7 @@ type DialogKind =
   | "requestInfo"
   | "provideInfo"
   | "resolve"
+  | "reopen"
   | "cancel"
   | "override"
   | "close";
@@ -157,6 +158,7 @@ export function StateActions({
         "btn-primary"
       )
     );
+    secondary.push(btn("reopen", "It’s still not fixed", () => open("reopen")));
   }
   if (
     (status === "ASSIGNED" || status === "ACKNOWLEDGED" || status === "IN_PROGRESS") &&

@@ -21,6 +21,7 @@ type Board = Record<ColumnStatus, IncidentSummary[]>;
 const RESOLVED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 // The list endpoint caps a page at 100; a board column holding more than that needs the list view.
 const COLUMN_SIZE = 100;
+const LIVE_RELOAD_DELAY_MS = 500;
 
 /** Resolved tickets stay on the board for a week; older ones only show in the list. */
 function recentlyResolved(ticket: IncidentSummary): boolean {
@@ -39,6 +40,8 @@ interface PendingText {
 export default function BoardPage() {
   const { user, loading: authLoading } = useAuth();
   const [board, setBoard] = useState<Board | null>(null);
+  // Columns where the server had more tickets than one page holds.
+  const [overflow, setOverflow] = useState<Partial<Record<ColumnStatus, boolean>>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<{ id: string; message: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -61,12 +64,18 @@ export default function BoardPage() {
     const version = ++loadVersion.current;
     try {
       // One request per column: a single unfiltered list would fill up with closed tickets.
+      // Technicians ask for their own assignments, so tickets they only reported don't use up
+      // the page before the board filters them out.
+      const mine = isAdmin(user.role) ? undefined : user.id;
       const pages = await Promise.all(
-        COLUMNS.map((status) => api.listIncidents({ status, size: COLUMN_SIZE }))
+        COLUMNS.map((status) => api.listIncidents({ status, size: COLUMN_SIZE, assigneeId: mine }))
       );
       if (version !== loadVersion.current) return;
       const next = {} as Board;
+      const more: Partial<Record<ColumnStatus, boolean>> = {};
       COLUMNS.forEach((status, i) => {
+        const page = pages[i];
+        if (page && page.totalElements > page.content.length) more[status] = true;
         next[status] = (pages[i]?.content ?? []).filter(
           (ticket) =>
             // Technicians also see tickets they reported; the board is only the ones they work.
@@ -75,6 +84,7 @@ export default function BoardPage() {
         );
       });
       setBoard(next);
+      setOverflow(more);
       setLoadError(null);
     } catch (err: unknown) {
       if (version !== loadVersion.current) return;
@@ -86,10 +96,15 @@ export default function BoardPage() {
     void load();
   }, [load]);
 
-  // Someone else moved a ticket: refresh quietly.
+  // A ticket changed: refresh quietly. Bursts (a major incident resolving its linked tickets)
+  // arrive as many events at once, so they are folded into one reload.
+  const reloadTimer = useRef<number | undefined>(undefined);
   useLiveEvent((e) => {
-    if (e.event === "incident-updated") void load();
+    if (e.event !== "incident-updated") return;
+    window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => void load(), LIVE_RELOAD_DELAY_MS);
   });
+  useEffect(() => () => window.clearTimeout(reloadTimer.current), []);
 
   // Every card here is the viewer's own (technicians) or one an admin may work.
   const movesFor = (ticket: IncidentSummary) => allowedMoves(ticket.status, role, true);
@@ -266,6 +281,14 @@ export default function BoardPage() {
                       />
                     ))}
                   </ul>
+                )}
+                {overflow[column] && (
+                  <p className="field-hint board-more">
+                    Showing the first {COLUMN_SIZE}.{" "}
+                    <Link href="/" className="link">
+                      See all in the ticket list
+                    </Link>
+                  </p>
                 )}
               </section>
             );

@@ -189,10 +189,23 @@ export default function IncidentDetailPage() {
             <div className="callout callout-neutral linked-parent">
               <p>
                 Part of{" "}
-                <Link href={`/incidents/${parent.id}`} className="link mono">
-                  {parent.incidentNumber}
-                </Link>
+                {/* Only administrators can open other people's tickets; others see it read-only. */}
+                {isAdmin(currentUserRole) ? (
+                  <Link href={`/incidents/${parent.id}`} className="link mono">
+                    {parent.incidentNumber}
+                  </Link>
+                ) : (
+                  <span className="mono">{parent.incidentNumber}</span>
+                )}
                 : {parent.title} <StatusBadge status={parent.status} />
+                {!isAdmin(currentUserRole) && (
+                  <>
+                    {" "}
+                    <Link href="/issues" className="link">
+                      Follow it on All issues
+                    </Link>
+                  </>
+                )}
               </p>
               {isAdmin(currentUserRole) && (
                 <button type="button" className="btn btn-sm" disabled={unlinking} onClick={unlink}>
@@ -235,9 +248,13 @@ export default function IncidentDetailPage() {
                 {children.map((child) => (
                   <li key={child.id} className="similar-item">
                     <div className="similar-head">
-                      <Link href={`/incidents/${child.id}`} className="mono link">
-                        {child.incidentNumber}
-                      </Link>
+                      {isAdmin(currentUserRole) ? (
+                        <Link href={`/incidents/${child.id}`} className="mono link">
+                          {child.incidentNumber}
+                        </Link>
+                      ) : (
+                        <span className="mono">{child.incidentNumber}</span>
+                      )}
                       <span className="title">{child.title}</span>
                       <StatusBadge status={child.status} />
                     </div>

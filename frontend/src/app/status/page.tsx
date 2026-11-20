@@ -11,6 +11,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const SEVERITY: Record<ServiceHealth, number> = { OUTAGE: 0, DEGRADED: 1, OPERATIONAL: 2 };
 
 /** Health of every service, from open tickets (counts only), for every signed-in user. */
+
+const STATUS_REFRESH_MS = 60_000;
 export default function ServiceStatusPage() {
   const { user, loading: authLoading } = useAuth();
   const [services, setServices] = useState<ServiceStatus[] | null>(null);
@@ -34,10 +36,18 @@ export default function ServiceStatusPage() {
     if (user) load();
   }, [user, load]);
 
-  // Any ticket change can move a service between states; reconnecting may have missed some.
+  // Live events only cover tickets the viewer follows, so also re-check every minute while the
+  // page is visible; reconnecting may have missed some changes too.
   useLiveEvent((e) => {
     if (e.event === "incident-updated" || e.event === "ready") load();
   });
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, STATUS_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [user, load]);
 
   if (authLoading || !user) return <output className="empty">Loading…</output>;
 
@@ -51,7 +61,7 @@ export default function ServiceStatusPage() {
       <div className="page-header">
         <div>
           <h1>Service status</h1>
-          <p>Worked out from open tickets. Updates live.</p>
+          <p>Worked out from open tickets. Refreshes on its own every minute.</p>
         </div>
         <Link className="btn" href="/issues">
           All issues

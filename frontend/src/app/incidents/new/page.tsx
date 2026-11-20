@@ -18,7 +18,7 @@ import {
 import { CATEGORY_LABELS, CRITICALITY_LABELS, SERVICE_HEALTH_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Wait for a pause in typing before asking the server for suggestions. */
 const DRAFT_DEBOUNCE_MS = 500;
@@ -32,6 +32,9 @@ export default function NewIncidentPage() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [categoryTouched, setCategoryTouched] = useState(false);
+  // Set synchronously by the "affects me too" prefill, which runs in the same pass as the draft
+  // effect below; state alone would still read "untouched" there and reset the category.
+  const categoryChosen = useRef(false);
   const [impact, setImpact] = useState<Impact>("MEDIUM");
   const [urgency, setUrgency] = useState<Urgency>("MEDIUM");
   const [serviceId, setServiceId] = useState("");
@@ -64,6 +67,7 @@ export default function NewIncidentPage() {
 `);
     const relatedCategory = params.get("category") as Category | null;
     if (relatedCategory && relatedCategory in CATEGORY_LABELS) {
+      categoryChosen.current = true;
       setCategory(relatedCategory);
       setCategoryTouched(true);
     }
@@ -109,7 +113,7 @@ export default function NewIncidentPage() {
   useEffect(() => {
     setSuggestion(null);
     setDuplicates([]);
-    if (!categoryTouched) setCategory(DEFAULT_CATEGORY);
+    if (!categoryTouched && !categoryChosen.current) setCategory(DEFAULT_CATEGORY);
     if (!user || (title.trim().length < 4 && description.trim().length < 10)) {
       return;
     }
@@ -120,7 +124,7 @@ export default function NewIncidentPage() {
         .then((s) => {
           if (!active) return;
           setSuggestion(s.category ? s : null);
-          if (s.category && !categoryTouched) setCategory(s.category);
+          if (s.category && !categoryTouched && !categoryChosen.current) setCategory(s.category);
         })
         .catch(() => {});
       api
