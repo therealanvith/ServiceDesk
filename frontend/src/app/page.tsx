@@ -16,6 +16,7 @@ import {
   checkBackendHealth,
 } from "@/lib/apiClient";
 import { CATEGORY_LABELS, isAdmin, timeAgo } from "@/lib/labels";
+import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -119,6 +120,11 @@ export default function IncidentsDashboardPage() {
       window.clearTimeout(pending);
     };
   }, [filters, page, user, authLoading]);
+
+  // Another person changed a ticket: refresh quietly with the same filters.
+  useLiveEvent((e) => {
+    if (e.event === "incident-updated") setFilters((current) => ({ ...current }));
+  });
 
   const handleFilterChange = (updated: FilterState) => {
     setFilters(updated);

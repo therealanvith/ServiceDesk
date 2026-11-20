@@ -57,6 +57,7 @@ import com.servicedesk.domain.sla.SlaPolicyProvider;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.User;
 import com.servicedesk.domain.user.UserId;
+import com.servicedesk.infrastructure.live.LiveEventBroadcaster;
 import com.servicedesk.infrastructure.persistence.entity.IncidentCommentEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentEntity;
 import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
@@ -68,9 +69,11 @@ import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRe
 import java.time.Clock;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,6 +95,7 @@ public class IncidentApplicationService {
   private final SimilarityStrategy similarityStrategy;
   private final CategorySuggestionStrategy categorySuggester;
   private final SpringDataItServiceJpaRepository serviceRepository;
+  private final LiveEventBroadcaster liveEvents;
 
   private static final int MAX_PAGE_SIZE = 100;
 
@@ -110,7 +114,9 @@ public class IncidentApplicationService {
       Clock clock,
       SlaPolicyProvider slaPolicies,
       SpringDataItServiceJpaRepository serviceRepository,
-      PriorityCalculationStrategy priorityStrategy) {
+      PriorityCalculationStrategy priorityStrategy,
+      LiveEventBroadcaster liveEvents) {
+    this.liveEvents = liveEvents;
     this.incidentRepository = incidentRepository;
     this.serviceRepository = serviceRepository;
     this.userRepository = userRepository;
@@ -235,6 +241,7 @@ public class IncidentApplicationService {
         new IncidentCreatedEvent(
             saved.getId(), reporter.getId(), saved.getPriority(), clock.instant()));
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -302,6 +309,7 @@ public class IncidentApplicationService {
     eventPublisher.publish(
         new IncidentAssignedEvent(incident.getId(), targetTechId, actor.getId(), clock.instant()));
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -327,6 +335,7 @@ public class IncidentApplicationService {
             "ACKNOWLEDGED",
             "Picked up: " + incident.getIncidentNumber(),
             actor.getFullName() + " is handling your ticket."));
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -355,6 +364,7 @@ public class IncidentApplicationService {
           UpdateKind.PICKUP,
           actor.getFullName() + " picked this up and is working on it.");
     }
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -385,6 +395,7 @@ public class IncidentApplicationService {
             "More Information Needed: " + incident.getIncidentNumber(),
             request.question()));
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -416,6 +427,7 @@ public class IncidentApplicationService {
               request.answer()));
     }
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -446,6 +458,7 @@ public class IncidentApplicationService {
             "Incident Resolved: " + incident.getIncidentNumber(),
             "Resolution: " + request.resolutionSummary()));
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -497,6 +510,7 @@ public class IncidentApplicationService {
                       ? " and rated it " + request.rating() + "/5."
                       : ".")));
     }
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -525,6 +539,7 @@ public class IncidentApplicationService {
         actor,
         UpdateKind.STATUS,
         "Cancelled by " + actor.getFullName() + ": " + request.reason());
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -567,6 +582,7 @@ public class IncidentApplicationService {
                   + request.remarks()));
     }
 
+    broadcastChange(saved);
     return toDetailResponse(saved);
   }
 
@@ -637,6 +653,7 @@ public class IncidentApplicationService {
             clock.instant());
 
     IncidentCommentEntity saved = commentJpaRepository.save(comment);
+    broadcastChange(loadIncident(incidentId));
 
     auditLogRepository.save(
         AuditLog.create(
@@ -921,6 +938,28 @@ public class IncidentApplicationService {
 
     eventPublisher.publish(
         new IncidentStatusChangedEvent(incidentId, oldStatus, newStatus, actorId, clock.instant()));
+  }
+
+  /**
+   * Tells the reporter, the assignee and administrators' open pages that a ticket changed, once the
+   * change is committed. Pages refetch, so only the id and status travel.
+   */
+  private void broadcastChange(Incident incident) {
+    Set<UUID> audience = new HashSet<>();
+    audience.add(incident.getReporterId().getValue());
+    if (incident.getAssigneeId() != null) {
+      audience.add(incident.getAssigneeId().getValue());
+    }
+    userRepository.findAll().stream()
+        .filter(u -> u.getRole().hasAdminRights() && u.isAvailable())
+        .forEach(u -> audience.add(u.getId().getValue()));
+    Map<String, Object> data =
+        Map.of(
+            "incidentId", incident.getId().getValue(),
+            "incidentNumber", incident.getIncidentNumber(),
+            "status", incident.getStatus().name());
+    NotificationDispatch.runAfterCommit(
+        () -> audience.forEach(userId -> liveEvents.send(userId, "incident-updated", data)));
   }
 
   private void notifyAdmins(Incident incident, String type, String title, String body) {

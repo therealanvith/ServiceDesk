@@ -18,6 +18,7 @@ import {
   isAdmin,
   timeAgo,
 } from "@/lib/labels";
+import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -58,6 +59,18 @@ export default function IncidentDetailPage() {
     if (cRes.status === "fulfilled") setComments(cRes.value);
     if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
   }, [incidentId, user]);
+
+  // Someone else changed this ticket: show the new state without blanking the page.
+  useLiveEvent((e) => {
+    if (e.event !== "incident-updated" || e.data.incidentId !== incidentId) return;
+    api
+      .getIncident(incidentId)
+      .then((inc) => {
+        setIncident(inc);
+        return loadPanels();
+      })
+      .catch(() => {});
+  });
 
   const loadData = useCallback(async () => {
     const version = ++requestVersion.current;

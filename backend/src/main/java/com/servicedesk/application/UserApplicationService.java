@@ -303,6 +303,24 @@ public class UserApplicationService {
     return toAccountResponse(userJpaRepository.save(user));
   }
 
+  /** Sets the address notification emails go to; blank removes it. */
+  public UserAccountResponse updateEmail(UUID userId, String email, String actorUsername) {
+    UserEntity user = loadManageableUser(userId, actorUsername);
+    String normalized = email == null || email.isBlank() ? null : email.trim();
+    if (normalized != null) {
+      userJpaRepository
+          .findByEmailIgnoreCase(normalized)
+          .filter(other -> !other.getId().equals(user.getId()))
+          .ifPresent(
+              other -> {
+                throw new IllegalArgumentException("Another account already uses this email");
+              });
+    }
+    user.setEmail(normalized);
+    user.setUpdatedAt(clock.instant());
+    return toAccountResponse(userJpaRepository.save(user));
+  }
+
   public UserAccountResponse setActive(UUID userId, boolean active, String actorUsername) {
     UserEntity user = loadManageableUser(userId, actorUsername);
     user.setActive(active);

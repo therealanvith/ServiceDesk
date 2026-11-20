@@ -348,6 +348,16 @@ export interface IncidentQuery {
 const TOKEN_KEY = "servicedesk_jwt";
 const AUTH_PATHS = ["/auth/login", "/auth/google", "/auth/register"];
 
+/** Where the live-updates stream lives (Server-Sent Events). */
+export function liveEventsUrl(): string {
+  return `${API_BASE_URL}/events`;
+}
+
+/** The signed-in session's token, for the live-updates stream. */
+export function readAuthToken(): string | null {
+  return getAuthToken();
+}
+
 function getAuthToken(): string | null {
   if (typeof window === "undefined") {
     return null;
@@ -474,6 +484,8 @@ export const api = {
   }) => apiClient<UserAccount>("/users", post(data)),
   updateUserRole: (id: string, role: Role) =>
     apiClient<UserAccount>(`/users/${id}/role`, put({ role })),
+  updateUserEmail: (id: string, email: string) =>
+    apiClient<UserAccount>(`/users/${id}/email`, put({ email })),
   setUserActive: (id: string, active: boolean) =>
     apiClient<UserAccount>(`/users/${id}/active`, put({ active })),
 

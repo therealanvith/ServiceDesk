@@ -26,6 +26,7 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const [onlyNew, setOnlyNew] = useState(false);
+  const [emailEdit, setEmailEdit] = useState<{ id: string; value: string } | null>(null);
 
   const isRoot = user?.role === "ROOT";
   // Administrators manage employees and technicians; root can also grant administrator access.
@@ -204,10 +205,60 @@ export default function UsersPage() {
                       <td>
                         {a.fullName}
                         {isNew(a) && <span className="tag new-tag">New</span>}
-                        <span className="props-sub">
-                          <span className="mono">{a.username}</span>
-                          {a.email && ` · ${a.email}`}
-                        </span>
+                        {emailEdit?.id === a.id ? (
+                          <form
+                            className="row email-edit"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const value = emailEdit.value.trim();
+                              setEmailEdit(null);
+                              run(
+                                a.id,
+                                () => api.updateUserEmail(a.id, value),
+                                value
+                                  ? `${a.username} will get emails at ${value}.`
+                                  : `${a.username} no longer gets email notifications.`
+                              );
+                            }}
+                          >
+                            <input
+                              type="email"
+                              className="input"
+                              aria-label={`Email for ${a.username}`}
+                              value={emailEdit.value}
+                              maxLength={100}
+                              onChange={(e) => setEmailEdit({ id: a.id, value: e.target.value })}
+                            />
+                            <button type="submit" className="btn btn-sm btn-primary">
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setEmailEdit(null)}
+                            >
+                              Cancel
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="props-sub">
+                            <span className="mono">{a.username}</span>
+                            {a.email ? ` · ${a.email}` : " · no email"}
+                            {manageable && (
+                              <>
+                                {" "}
+                                <button
+                                  type="button"
+                                  className="link-btn"
+                                  disabled={busyIds.has(a.id)}
+                                  onClick={() => setEmailEdit({ id: a.id, value: a.email ?? "" })}
+                                >
+                                  {a.email ? "Change" : "Add email"}
+                                </button>
+                              </>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td>
                         {manageable ? (

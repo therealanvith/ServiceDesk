@@ -3,11 +3,10 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/apiClient";
 import { ROLE_LABELS, isAdmin } from "@/lib/labels";
+import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const UNREAD_POLL_MS = 60_000;
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -15,26 +14,29 @@ export function Navbar() {
   const router = useRouter();
   const [unread, setUnread] = useState(0);
 
-  // Light polling keeps the inbox badge current without a websocket.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check whenever the page changes
+  const [inboxKey, setInboxKey] = useState(0);
+
+  // The live stream says when something new arrives (and when it reconnects, in case anything
+  // was missed); the count is also re-checked on every page change.
+  useLiveEvent((e) => {
+    if (e.event === "notification" || e.event === "ready") setInboxKey((k) => k + 1);
+  });
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check on page change and live events
   useEffect(() => {
     if (!user) {
       setUnread(0);
       return;
     }
     let active = true;
-    const load = () =>
-      api
-        .getNotifications()
-        .then((inbox) => active && setUnread(inbox.unreadCount))
-        .catch(() => {});
-    load();
-    const timer = window.setInterval(load, UNREAD_POLL_MS);
+    api
+      .getNotifications()
+      .then((inbox) => active && setUnread(inbox.unreadCount))
+      .catch(() => {});
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
-  }, [user, pathname]);
+  }, [user, pathname, inboxKey]);
 
   const links = !user
     ? []

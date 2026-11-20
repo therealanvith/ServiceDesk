@@ -5,6 +5,7 @@ import com.servicedesk.api.dto.CreateUserRequest;
 import com.servicedesk.api.dto.GoogleSignInRequest;
 import com.servicedesk.api.dto.TechnicianResponse;
 import com.servicedesk.api.dto.UpdateCapacityRequest;
+import com.servicedesk.api.dto.UpdateEmailRequest;
 import com.servicedesk.api.dto.UpdateSkillsRequest;
 import com.servicedesk.api.dto.UpdateUserActiveRequest;
 import com.servicedesk.api.dto.UpdateUserRoleRequest;
@@ -94,6 +95,13 @@ public class UserController {
       @Valid @RequestBody CreateUserRequest request, Principal principal) {
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(userService.createUser(request, principal.getName()));
+  }
+
+  @PutMapping("/{id}/email")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<UserAccountResponse> updateEmail(
+      @PathVariable UUID id, @Valid @RequestBody UpdateEmailRequest request, Principal principal) {
+    return ResponseEntity.ok(userService.updateEmail(id, request.email(), principal.getName()));
   }
 
   @PutMapping("/{id}/role")

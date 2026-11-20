@@ -6,6 +6,7 @@ import com.servicedesk.infrastructure.security.ratelimit.InMemoryRateLimiter;
 import com.servicedesk.infrastructure.security.ratelimit.RateLimitFilter;
 import com.servicedesk.infrastructure.security.ratelimit.RateLimitSettings;
 import com.servicedesk.infrastructure.security.ratelimit.RateLimiter;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -104,7 +105,11 @@ public class SecurityConfig {
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             auth ->
-                auth.requestMatchers(HttpMethod.GET, "/api/v1/health")
+                // A live-updates stream is authorised when it opens; the dispatch Spring makes
+                // when it ends carries no token and must not be refused.
+                auth.dispatcherTypeMatchers(DispatcherType.ASYNC)
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/health")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/actuator/health")
                     .permitAll()

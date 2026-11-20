@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { LiveUpdates } from "@/components/LiveUpdates";
 import { Navbar } from "@/components/Navbar";
 import { themeInitScript } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/context/AuthContext";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main id="main-content" className="page">
             {children}
           </main>
+          <LiveUpdates />
         </AuthProvider>
       </body>
     </html>

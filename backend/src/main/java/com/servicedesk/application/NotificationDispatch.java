@@ -39,6 +39,25 @@ final class NotificationDispatch {
     }
   }
 
+  /** Runs {@code work} once the current transaction commits (or now, if there is none). */
+  static void runAfterCommit(Runnable work) {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              try {
+                work.run();
+              } catch (RuntimeException ex) {
+                log.warn("After-commit task failed: {}", ex.getMessage());
+              }
+            }
+          });
+    } else {
+      work.run();
+    }
+  }
+
   private static void sendNow(List<NotificationChannel> channels, NotificationMessage message) {
     for (NotificationChannel channel : channels) {
       try {

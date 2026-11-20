@@ -6,10 +6,15 @@ import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
-/** Adapter implementing NotificationChannel that formats and simulates email dispatch. */
+/**
+ * Log-only email channel used when Brevo is not configured: it records what would have been sent so
+ * demos and development need no mail account.
+ */
 @Component
+@ConditionalOnExpression("'${app.mail.brevo.api-key:}'.isBlank()")
 public class EmailGatewayAdapter implements NotificationChannel {
 
   private static final Logger log = LoggerFactory.getLogger(EmailGatewayAdapter.class);
