@@ -1,5 +1,6 @@
 "use client";
 
+import { TrendsSection } from "@/components/charts/TrendsSection";
 import { useAuth } from "@/context/AuthContext";
 import { type Report, api } from "@/lib/apiClient";
 import { CATEGORY_LABELS, PRIORITY_LABELS, STATUS_LABELS, isAdmin } from "@/lib/labels";
@@ -157,6 +158,8 @@ export default function ReportsPage() {
           }))}
         />
       </div>
+
+      <TrendsSection />
 
       <section className="card" style={{ marginTop: 16 }}>
         <div className="card-header">
