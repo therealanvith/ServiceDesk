@@ -32,6 +32,8 @@ interface PendingText {
   ticket: IncidentSummary;
   kind: TextDialogKind;
   to: IncidentStatus;
+  /** Started from the keyboard menu, so focus follows the card to its new column. */
+  viaMenu: boolean;
 }
 
 export default function BoardPage() {
@@ -43,6 +45,8 @@ export default function BoardPage() {
   const [dragging, setDragging] = useState<IncidentSummary | null>(null);
   const [over, setOver] = useState<ColumnStatus | null>(null);
   const [pending, setPending] = useState<PendingText | null>(null);
+  // The card whose Move button gets focus once it has re-mounted in its new column.
+  const [focusTicketId, setFocusTicketId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [dialogBusy, setDialogBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -90,7 +94,8 @@ export default function BoardPage() {
   // Every card here is the viewer's own (technicians) or one an admin may work.
   const movesFor = (ticket: IncidentSummary) => allowedMoves(ticket.status, role, true);
 
-  const finish = (ticket: IncidentSummary, to: IncidentStatus, done: string) => {
+  const finish = (ticket: IncidentSummary, to: IncidentStatus, done: string, viaMenu: boolean) => {
+    if (viaMenu) setFocusTicketId(ticket.id);
     showToast({
       title: done,
       message: `${ticket.incidentNumber} · ${ticket.title}`,
@@ -109,18 +114,18 @@ export default function BoardPage() {
     void load();
   };
 
-  const startMove = async (ticket: IncidentSummary, move: Move) => {
+  const startMove = async (ticket: IncidentSummary, move: Move, viaMenu = false) => {
     setMoveError(null);
     if (move.text) {
       setText("");
       setDialogError(null);
-      setPending({ ticket, kind: move.text, to: move.to });
+      setPending({ ticket, kind: move.text, to: move.to, viaMenu });
       return;
     }
     setBusyId(ticket.id);
     try {
       await performMove(ticket.id, move.action);
-      finish(ticket, move.to, `Moved to ${STATUS_LABELS[move.to].toLowerCase()}`);
+      finish(ticket, move.to, `Moved to ${STATUS_LABELS[move.to].toLowerCase()}`, viaMenu);
     } catch (err: unknown) {
       setMoveError({
         id: ticket.id,
@@ -137,7 +142,7 @@ export default function BoardPage() {
     setDialogError(null);
     try {
       await TEXT_DIALOGS[pending.kind].submit(pending.ticket.id, value);
-      finish(pending.ticket, pending.to, TEXT_DIALOGS[pending.kind].done);
+      finish(pending.ticket, pending.to, TEXT_DIALOGS[pending.kind].done, pending.viaMenu);
       setPending(null);
     } catch (err: unknown) {
       setDialogError(err instanceof Error ? err.message : "Action failed");
@@ -247,7 +252,9 @@ export default function BoardPage() {
                         busy={busyId === ticket.id}
                         dragged={dragging?.id === ticket.id}
                         error={moveError?.id === ticket.id ? moveError.message : null}
-                        onMove={(move) => void startMove(ticket, move)}
+                        onMove={(move) => void startMove(ticket, move, true)}
+                        focusMove={focusTicketId === ticket.id}
+                        onFocused={() => setFocusTicketId(null)}
                         onDragStart={() => {
                           setMoveError(null);
                           setDragging(ticket);
@@ -289,6 +296,8 @@ function BoardCard({
   dragged,
   error,
   onMove,
+  focusMove,
+  onFocused,
   onDragStart,
   onDragEnd,
 }: {
@@ -299,6 +308,8 @@ function BoardCard({
   dragged: boolean;
   error: string | null;
   onMove: (move: Move) => void;
+  focusMove: boolean;
+  onFocused: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
@@ -344,7 +355,14 @@ function BoardCard({
         </p>
       )}
       {moves.length > 0 ? (
-        <MoveMenu ticket={ticket} moves={moves} busy={busy} onMove={onMove} />
+        <MoveMenu
+          ticket={ticket}
+          moves={moves}
+          busy={busy}
+          onMove={onMove}
+          focusMove={focusMove}
+          onFocused={onFocused}
+        />
       ) : (
         <p className="field-hint">
           {ticket.status === "RESOLVED"
@@ -364,11 +382,15 @@ function MoveMenu({
   moves,
   busy,
   onMove,
+  focusMove,
+  onFocused,
 }: {
   ticket: IncidentSummary;
   moves: Move[];
   busy: boolean;
   onMove: (move: Move) => void;
+  focusMove: boolean;
+  onFocused: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -384,6 +406,14 @@ function MoveMenu({
     document.addEventListener("pointerdown", onPointer);
     return () => document.removeEventListener("pointerdown", onPointer);
   }, [open]);
+
+  // After a keyboard move the card lives in another column; put focus back on its button there.
+  useEffect(() => {
+    if (focusMove && !busy) {
+      buttonRef.current?.focus();
+      onFocused();
+    }
+  }, [focusMove, busy, onFocused]);
 
   const close = () => {
     setOpen(false);
@@ -421,8 +451,8 @@ function MoveMenu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={`Move ${ticket.incidentNumber} to…`}
-        disabled={busy}
-        onClick={() => setOpen((v) => !v)}
+        aria-disabled={busy || undefined}
+        onClick={() => !busy && setOpen((v) => !v)}
       >
         {busy ? "Moving…" : "Move to…"}
       </button>

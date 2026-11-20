@@ -21,7 +21,7 @@ import { CATEGORY_LABELS, isAdmin, timeAgo } from "@/lib/labels";
 import { type Move, allowedMoves, performMove } from "@/lib/lifecycle";
 import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PAGE_SIZE = 15;
 
@@ -41,6 +41,7 @@ export default function IncidentsDashboardPage() {
   const [technicians, setTechnicians] = useState<TechnicianItem[] | undefined>();
   const [workload, setWorkload] = useState<Workload | null>(null);
   const [lookupFailed, setLookupFailed] = useState(false);
+  const silentReload = useRef(false);
   const [lookupKey, setLookupKey] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
@@ -79,12 +80,15 @@ export default function IncidentsDashboardPage() {
 
   useEffect(() => {
     let active = true;
-    setError(null);
+    // A live refresh replaces rows in place: no skeleton, so focus and row messages survive.
+    const silent = silentReload.current;
+    silentReload.current = false;
+    if (!silent) setError(null);
     if (authLoading || !user) {
       setLoading(authLoading);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     const loadIncidents = async () => {
       try {
         const res = await api.listIncidents({
@@ -110,7 +114,7 @@ export default function IncidentsDashboardPage() {
         setTotalPages(res.totalPages || 1);
         setTotalElements(res.totalElements);
       } catch (err: unknown) {
-        if (!active) return;
+        if (!active || silent) return; // keep the rows on screen; the next event retries
         setError(err instanceof Error ? err.message : "Unable to load incidents");
         setIncidents([]);
         setTotalPages(1);
@@ -126,9 +130,11 @@ export default function IncidentsDashboardPage() {
     };
   }, [filters, page, user, authLoading]);
 
-  // Another person changed a ticket: refresh quietly with the same filters.
+  // A ticket changed (ours or someone else's): refresh quietly with the same filters.
   useLiveEvent((e) => {
-    if (e.event === "incident-updated") setFilters((current) => ({ ...current }));
+    if (e.event !== "incident-updated") return;
+    silentReload.current = true;
+    setFilters((current) => ({ ...current }));
   });
 
   const handleFilterChange = (updated: FilterState) => {

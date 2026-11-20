@@ -38,11 +38,40 @@ export function LiveUpdates() {
     return startLiveEvents(liveEventsUrl(), token);
   }, [user]);
 
-  const push = useCallback((toast: Omit<Toast, "id">) => {
-    const id = nextId.current++;
-    setToasts((current) => [...current.slice(-3), { ...toast, id }]);
-    window.setTimeout(() => setToasts((current) => current.filter((t) => t.id !== id)), TOAST_MS);
+  const timers = useRef(new Map<number, number>());
+
+  const dismiss = useCallback((id: number) => {
+    window.clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+    setToasts((current) => current.filter((t) => t.id !== id));
   }, []);
+
+  // Each toast closes itself after a while, but the countdown stops while it is hovered or holds
+  // keyboard focus, so its link stays usable for as long as someone needs it.
+  const startTimer = useCallback(
+    (id: number) => {
+      window.clearTimeout(timers.current.get(id));
+      timers.current.set(
+        id,
+        window.setTimeout(() => dismiss(id), TOAST_MS)
+      );
+    },
+    [dismiss]
+  );
+
+  const pauseTimer = useCallback((id: number) => {
+    window.clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+  }, []);
+
+  const push = useCallback(
+    (toast: Omit<Toast, "id">) => {
+      const id = nextId.current++;
+      setToasts((current) => [...current.slice(-3), { ...toast, id }]);
+      startTimer(id);
+    },
+    [startTimer]
+  );
 
   useLiveEvent((e) => {
     if (e.event === "notification") {
@@ -63,7 +92,18 @@ export function LiveUpdates() {
   return (
     <section className="toasts" aria-live="polite" aria-label="Notifications">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.tone ?? "info"}`}>
+        <div
+          key={t.id}
+          className={`toast toast-${t.tone ?? "info"}`}
+          onMouseEnter={() => pauseTimer(t.id)}
+          onMouseLeave={(e) => {
+            if (!e.currentTarget.contains(document.activeElement)) startTimer(t.id);
+          }}
+          onFocus={() => pauseTimer(t.id)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) startTimer(t.id);
+          }}
+        >
           <div className="toast-body">
             <p className="toast-title">
               {t.href ? (
@@ -80,7 +120,7 @@ export function LiveUpdates() {
             type="button"
             className="toast-close"
             aria-label="Dismiss"
-            onClick={() => setToasts((current) => current.filter((x) => x.id !== t.id))}
+            onClick={() => dismiss(t.id)}
           >
             ×
           </button>

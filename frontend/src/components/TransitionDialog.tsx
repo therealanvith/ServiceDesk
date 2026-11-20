@@ -143,7 +143,8 @@ export function Modal({
     return () => {
       dialog.removeEventListener("cancel", onCancel);
       if (dialog.open) dialog.close();
-      opener?.focus();
+      // The opener may have re-mounted elsewhere (a board card that moved); then its page decides.
+      if (opener?.isConnected) opener.focus();
     };
   }, []);
 
