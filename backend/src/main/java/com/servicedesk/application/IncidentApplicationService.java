@@ -11,6 +11,7 @@ import com.servicedesk.api.dto.CreateIncidentRequest;
 import com.servicedesk.api.dto.IncidentDetailResponse;
 import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.IncidentSummaryResponse;
+import com.servicedesk.api.dto.MajorIncidentDtos.LinkedIncidentResponse;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
@@ -32,6 +33,7 @@ import com.servicedesk.domain.event.IncidentAssignedEvent;
 import com.servicedesk.domain.event.IncidentCreatedEvent;
 import com.servicedesk.domain.event.IncidentStatusChangedEvent;
 import com.servicedesk.domain.exception.IncidentNotFoundException;
+import com.servicedesk.domain.exception.InvalidStateTransitionException;
 import com.servicedesk.domain.exception.TechnicianWorkloadExceededException;
 import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
@@ -164,8 +166,32 @@ public class IncidentApplicationService {
             service != null ? service.getId() : null,
             service != null ? service.getCriticality() : null);
 
+    // "This affects me too": join the existing issue when it's still open and is a main ticket.
+    Incident related =
+        request.relatedIncidentId() == null
+            ? null
+            : incidentRepository
+                .findById(IncidentId.of(request.relatedIncidentId()))
+                .filter(r -> isOpen(r.getStatus()) && r.getParentIncidentId() == null)
+                .orElse(null);
+    if (related != null) {
+      incident.linkToParent(related.getId());
+    }
+
     // Persist the parent before audit entries and notifications reference it.
     incidentRepository.save(incident);
+    if (related != null) {
+      auditLogRepository.save(
+          AuditLog.create(
+              incident.getId(),
+              reporter.getId(),
+              AuditAction.LINKED.name(),
+              null,
+              related.getIncidentNumber(),
+              clock.instant(),
+              "Reported as also affected by " + related.getIncidentNumber()));
+      broadcastChange(related);
+    }
 
     // Record creation audit log
     auditLogRepository.save(
@@ -458,8 +484,127 @@ public class IncidentApplicationService {
             "Incident Resolved: " + incident.getIncidentNumber(),
             "Resolution: " + request.resolutionSummary()));
 
+    resolveLinkedTickets(saved, actor, request.resolutionSummary());
     broadcastChange(saved);
     return toDetailResponse(saved);
+  }
+
+  /** Every open ticket linked under a major incident is resolved with it, and its reporter told. */
+  private void resolveLinkedTickets(Incident parent, User actor, String resolutionSummary) {
+    for (Incident child : incidentRepository.findChildren(parent.getId())) {
+      if (!isOpen(child.getStatus())) {
+        continue;
+      }
+      IncidentStatus before = child.getStatus();
+      String summary = "Resolved with " + parent.getIncidentNumber() + ": " + resolutionSummary;
+      child.resolveWithParent(summary);
+      Incident savedChild = incidentRepository.save(child);
+      recordStatusChange(
+          child.getId(),
+          actor.getId(),
+          before,
+          child.getStatus(),
+          "Resolved together with major incident " + parent.getIncidentNumber());
+      postUpdate(child.getId(), actor, UpdateKind.RESOLUTION, summary);
+      notifyChannels(
+          NotificationMessage.of(
+              child.getReporterId(),
+              child.getId(),
+              "RESOLVED",
+              "Incident Resolved: " + child.getIncidentNumber(),
+              "Fixed as part of " + parent.getIncidentNumber() + ": " + resolutionSummary));
+      broadcastChange(savedChild);
+    }
+  }
+
+  /**
+   * Links a ticket under a major incident (administrators only). One level deep: a main ticket
+   * can't itself be linked, and a linked ticket can't have its own linked tickets.
+   */
+  public IncidentDetailResponse linkToParent(UUID childId, UUID parentId, String actorUsername) {
+    User actor = loadUser(actorUsername);
+    requireAdmin(actor, "link tickets");
+    Incident child = loadVisibleIncident(childId, actor);
+    Incident parent = loadVisibleIncident(parentId, actor);
+    requireLinkable(child, parent);
+
+    child.linkToParent(parent.getId());
+    Incident saved = incidentRepository.save(child);
+    auditLogRepository.save(
+        AuditLog.create(
+            child.getId(),
+            actor.getId(),
+            AuditAction.LINKED.name(),
+            null,
+            parent.getIncidentNumber(),
+            clock.instant(),
+            "Linked to major incident " + parent.getIncidentNumber()));
+    postUpdate(
+        child.getId(),
+        actor,
+        UpdateKind.STATUS,
+        "Linked to "
+            + parent.getIncidentNumber()
+            + ", a known issue affecting several people. It will be resolved together with it.");
+    notifyChannels(
+        NotificationMessage.of(
+            child.getReporterId(),
+            child.getId(),
+            "LINKED",
+            "Known issue: " + child.getIncidentNumber(),
+            "Your ticket is part of "
+                + parent.getIncidentNumber()
+                + " ("
+                + parent.getTitle()
+                + "). You'll hear when it's fixed."));
+    broadcastChange(saved);
+    broadcastChange(parent);
+    return toDetailResponse(saved);
+  }
+
+  public IncidentDetailResponse unlinkFromParent(UUID childId, String actorUsername) {
+    User actor = loadUser(actorUsername);
+    requireAdmin(actor, "unlink tickets");
+    Incident child = loadVisibleIncident(childId, actor);
+    IncidentId parentId = child.getParentIncidentId();
+    if (parentId == null) {
+      throw new IllegalArgumentException("This ticket isn't linked to a major incident");
+    }
+    String parentNumber =
+        incidentRepository.findById(parentId).map(Incident::getIncidentNumber).orElse("—");
+    child.linkToParent(null);
+    Incident saved = incidentRepository.save(child);
+    auditLogRepository.save(
+        AuditLog.create(
+            child.getId(),
+            actor.getId(),
+            AuditAction.UNLINKED.name(),
+            parentNumber,
+            null,
+            clock.instant(),
+            "Unlinked from " + parentNumber));
+    postUpdate(
+        child.getId(), actor, UpdateKind.STATUS, "No longer linked to " + parentNumber + ".");
+    broadcastChange(saved);
+    incidentRepository.findById(parentId).ifPresent(this::broadcastChange);
+    return toDetailResponse(saved);
+  }
+
+  private void requireLinkable(Incident child, Incident parent) {
+    if (child.getId().equals(parent.getId())) {
+      throw new IllegalArgumentException("A ticket can't be linked to itself");
+    }
+    if (!isOpen(child.getStatus()) || !isOpen(parent.getStatus())) {
+      throw new InvalidStateTransitionException("Only open tickets can be linked");
+    }
+    if (parent.getParentIncidentId() != null) {
+      throw new IllegalArgumentException(
+          "That ticket is itself linked to another one; link to the main ticket instead");
+    }
+    if (!incidentRepository.findChildren(child.getId()).isEmpty()) {
+      throw new IllegalArgumentException(
+          "This ticket has its own linked tickets, so it can't be linked under another");
+    }
   }
 
   public IncidentDetailResponse closeIncident(
@@ -1099,7 +1244,24 @@ public class IncidentApplicationService {
         incident.getEscalatedAt(),
         incident.getFeedbackRating(),
         incident.getFeedbackComment(),
-        incident.getEscalationLevel());
+        incident.getEscalationLevel(),
+        incident.getParentIncidentId() == null
+            ? null
+            : incidentRepository
+                .findById(incident.getParentIncidentId())
+                .map(IncidentApplicationService::toLinked)
+                .orElse(null),
+        incidentRepository.findChildren(incident.getId()).stream()
+            .map(IncidentApplicationService::toLinked)
+            .toList());
+  }
+
+  private static LinkedIncidentResponse toLinked(Incident incident) {
+    return new LinkedIncidentResponse(
+        incident.getId().getValue(),
+        incident.getIncidentNumber(),
+        incident.getTitle(),
+        incident.getStatus());
   }
 
   private ServiceResponse toServiceResponse(ItServiceEntity s) {

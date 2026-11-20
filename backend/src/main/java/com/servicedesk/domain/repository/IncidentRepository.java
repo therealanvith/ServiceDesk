@@ -20,4 +20,7 @@ public interface IncidentRepository {
   List<Incident> findWithFilters(IncidentFilter filter);
 
   int countActiveByTechnicianId(UserId technicianId);
+
+  /** Tickets linked under a major incident. */
+  List<Incident> findChildren(IncidentId parentId);
 }

@@ -36,6 +36,15 @@ public interface IncidentState {
     throw new InvalidStateTransitionException("Cannot resolve incident in state: " + getStatus());
   }
 
+  /**
+   * The major incident this ticket is linked to was resolved. Allowed in every open state, so
+   * linked tickets close out whatever stage they had reached.
+   */
+  default void resolveWithParent(Incident context, String resolutionSummary) {
+    throw new InvalidStateTransitionException(
+        "Cannot resolve incident with its parent in state: " + getStatus());
+  }
+
   default void close(Incident context, UserId actorId) {
     throw new InvalidStateTransitionException("Cannot close incident in state: " + getStatus());
   }

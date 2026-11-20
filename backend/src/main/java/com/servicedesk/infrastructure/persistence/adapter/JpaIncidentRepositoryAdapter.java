@@ -133,6 +133,13 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
   }
 
   @Override
+  public List<Incident> findChildren(IncidentId parentId) {
+    return incidentJpaRepository.findByParentIncidentId(parentId.getValue()).stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
   public int countActiveByTechnicianId(UserId technicianId) {
     return incidentJpaRepository.countByAssigneeIdAndStatusNotIn(
         technicianId.getValue(), IncidentStatus.notWorkload());
@@ -181,6 +188,8 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     incident.setAffectedServiceId(entity.getServiceId());
     incident.setRespondedAt(entity.getRespondedAt());
     incident.setEscalatedAt(entity.getEscalatedAt());
+    incident.restoreParent(
+        entity.getParentIncidentId() == null ? null : IncidentId.of(entity.getParentIncidentId()));
     incident.escalateTo(
         entity.getEscalationLevel() != null ? entity.getEscalationLevel() : EscalationLevel.NONE,
         entity.getEscalatedAt());
@@ -234,6 +243,8 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     entity.setServiceId(incident.getAffectedServiceId());
     entity.setRespondedAt(incident.getRespondedAt());
     entity.setEscalatedAt(incident.getEscalatedAt());
+    entity.setParentIncidentId(
+        incident.getParentIncidentId() == null ? null : incident.getParentIncidentId().getValue());
     entity.setEscalationLevel(incident.getEscalationLevel());
     entity.setFeedbackRating(incident.getFeedbackRating());
     entity.setFeedbackComment(incident.getFeedbackComment());

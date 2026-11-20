@@ -16,6 +16,7 @@ import com.servicedesk.api.dto.CreateIncidentRequest;
 import com.servicedesk.api.dto.IncidentDetailResponse;
 import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.IncidentSummaryResponse;
+import com.servicedesk.api.dto.MajorIncidentDtos.LinkIncidentRequest;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
@@ -231,6 +232,21 @@ public class IncidentController {
     IncidentDetailResponse response =
         incidentService.cancelIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
+  }
+
+  /** Links this ticket under a major incident. */
+  @PostMapping("/{id}/link")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> link(
+      @PathVariable UUID id, @Valid @RequestBody LinkIncidentRequest request, Principal principal) {
+    return ResponseEntity.ok(
+        incidentService.linkToParent(id, request.parentId(), principal.getName()));
+  }
+
+  @PostMapping("/{id}/unlink")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> unlink(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(incidentService.unlinkFromParent(id, principal.getName()));
   }
 
   @PutMapping("/{id}/priority")

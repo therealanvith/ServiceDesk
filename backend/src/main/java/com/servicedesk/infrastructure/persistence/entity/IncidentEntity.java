@@ -105,6 +105,17 @@ public class IncidentEntity {
   @Column(name = "service_id")
   private UUID serviceId;
 
+  @Column(name = "parent_incident_id")
+  private UUID parentIncidentId;
+
+  public UUID getParentIncidentId() {
+    return parentIncidentId;
+  }
+
+  public void setParentIncidentId(UUID parentIncidentId) {
+    this.parentIncidentId = parentIncidentId;
+  }
+
   @Column(name = "responded_at")
   private Instant respondedAt;
 

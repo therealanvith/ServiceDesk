@@ -1,6 +1,7 @@
 package com.servicedesk.domain.incident;
 
 import com.servicedesk.domain.escalation.EscalationLevel;
+import com.servicedesk.domain.exception.DomainValidationException;
 import com.servicedesk.domain.incident.state.IncidentState;
 import com.servicedesk.domain.incident.state.ReportedState;
 import com.servicedesk.domain.priority.Priority;
@@ -37,6 +38,7 @@ public class Incident {
   private Instant respondedAt;
   private Instant escalatedAt;
   private EscalationLevel escalationLevel = EscalationLevel.NONE;
+  private IncidentId parentIncidentId;
   private Integer feedbackRating;
   private String feedbackComment;
   private Clock clock;
@@ -80,6 +82,30 @@ public class Incident {
   public void assign(UserId technicianId, UserId actorId) {
     this.currentState.assign(this, technicianId, actorId);
     this.updatedAt = getCurrentClockTime();
+  }
+
+  public void resolveWithParent(String resolutionSummary) {
+    this.currentState.resolveWithParent(this, resolutionSummary);
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  /** The major incident this ticket is part of, or null. */
+  public IncidentId getParentIncidentId() {
+    return parentIncidentId;
+  }
+
+  /** Links this ticket under a major incident (null unlinks it). */
+  public void linkToParent(IncidentId parentId) {
+    if (parentId != null && parentId.equals(this.id)) {
+      throw new DomainValidationException("A ticket can't be linked to itself");
+    }
+    this.parentIncidentId = parentId;
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  /** Restores the link when loading from storage, without touching the update time. */
+  public void restoreParent(IncidentId parentId) {
+    this.parentIncidentId = parentId;
   }
 
   public void acknowledge(UserId technicianId) {

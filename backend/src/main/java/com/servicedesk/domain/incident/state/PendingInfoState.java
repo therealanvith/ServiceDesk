@@ -20,6 +20,15 @@ public class PendingInfoState implements IncidentState {
     context.transitionTo(new InProgressState());
   }
 
+  /** Stops the paused SLA clock before resolving, so the pause is counted correctly. */
+  @Override
+  public void resolveWithParent(Incident context, String resolutionSummary) {
+    if (context.getSlaWindow() != null) {
+      context.getSlaWindow().resume(context.getCurrentClockTime());
+    }
+    ParentResolution.apply(context, resolutionSummary);
+  }
+
   @Override
   public IncidentStatus getStatus() {
     return IncidentStatus.PENDING_INFO;

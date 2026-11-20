@@ -1,14 +1,20 @@
 package com.servicedesk.application;
 
+import com.servicedesk.api.dto.MajorIncidentDtos.ServiceHealth;
+import com.servicedesk.api.dto.MajorIncidentDtos.ServiceStatusResponse;
 import com.servicedesk.api.dto.PriorityPreviewResponse;
 import com.servicedesk.api.dto.ServiceRequest;
 import com.servicedesk.api.dto.ServiceResponse;
 import com.servicedesk.api.dto.SlaPolicyResponse;
 import com.servicedesk.api.dto.UpdateSlaPolicyRequest;
 import com.servicedesk.domain.incident.Impact;
+import com.servicedesk.domain.incident.Incident;
+import com.servicedesk.domain.incident.IncidentId;
+import com.servicedesk.domain.incident.IncidentStatus;
 import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.priority.Priority;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
+import com.servicedesk.domain.repository.IncidentRepository;
 import com.servicedesk.domain.service.BusinessCriticality;
 import com.servicedesk.domain.sla.SlaPolicy;
 import com.servicedesk.domain.sla.SlaPolicyProvider;
@@ -22,6 +28,7 @@ import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,12 +44,67 @@ public class CatalogApplicationService {
   private final Clock clock;
   private final PriorityCalculationStrategy priorityStrategy;
 
+  private final IncidentRepository incidents;
+
+  /**
+   * Health of each active service from its open tickets: an open major incident (a ticket with
+   * linked tickets) or two open P1s mean an outage; any open P1/P2, or two or more open tickets,
+   * mean degraded; otherwise operational.
+   */
+  @Transactional(readOnly = true)
+  public List<ServiceStatusResponse> serviceStatus() {
+    List<Incident> open =
+        incidents.findAll().stream()
+            .filter(i -> i.getStatus().isActive() && i.getStatus() != IncidentStatus.RESOLVED)
+            .toList();
+    Set<IncidentId> majors =
+        open.stream()
+            .map(Incident::getParentIncidentId)
+            .filter(java.util.Objects::nonNull)
+            .collect(java.util.stream.Collectors.toSet());
+    return services.findAll().stream()
+        .filter(ItServiceEntity::isActive)
+        .sorted(java.util.Comparator.comparing(ItServiceEntity::getName))
+        .map(
+            service -> {
+              List<Incident> onService =
+                  open.stream()
+                      .filter(i -> service.getId().equals(i.getAffectedServiceId()))
+                      .toList();
+              long major = onService.stream().filter(i -> majors.contains(i.getId())).count();
+              long p1 =
+                  onService.stream().filter(i -> i.getPriority() == Priority.P1_CRITICAL).count();
+              boolean serious =
+                  onService.stream()
+                      .anyMatch(
+                          i ->
+                              i.getPriority() == Priority.P1_CRITICAL
+                                  || i.getPriority() == Priority.P2_HIGH);
+              ServiceHealth health =
+                  major > 0 || p1 >= 2
+                      ? ServiceHealth.OUTAGE
+                      : serious || onService.size() >= 2
+                          ? ServiceHealth.DEGRADED
+                          : ServiceHealth.OPERATIONAL;
+              return new ServiceStatusResponse(
+                  service.getId(),
+                  service.getName(),
+                  service.getCriticality(),
+                  health,
+                  onService.size(),
+                  major);
+            })
+        .toList();
+  }
+
   public CatalogApplicationService(
       SpringDataItServiceJpaRepository services,
       SpringDataSlaPolicyJpaRepository slaPolicies,
       SlaPolicyProvider slaPolicyProvider,
       Clock clock,
-      PriorityCalculationStrategy priorityStrategy) {
+      PriorityCalculationStrategy priorityStrategy,
+      IncidentRepository incidents) {
+    this.incidents = incidents;
     this.priorityStrategy = priorityStrategy;
     this.services = services;
     this.slaPolicies = slaPolicies;

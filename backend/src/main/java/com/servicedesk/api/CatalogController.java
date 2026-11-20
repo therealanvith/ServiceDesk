@@ -1,5 +1,6 @@
 package com.servicedesk.api;
 
+import com.servicedesk.api.dto.MajorIncidentDtos.ServiceStatusResponse;
 import com.servicedesk.api.dto.PriorityPreviewResponse;
 import com.servicedesk.api.dto.ServiceRequest;
 import com.servicedesk.api.dto.ServiceResponse;
@@ -52,6 +53,12 @@ public class CatalogController {
   public ResponseEntity<ServiceResponse> updateService(
       @PathVariable UUID id, @Valid @RequestBody ServiceRequest request) {
     return ResponseEntity.ok(catalog.updateService(id, request));
+  }
+
+  /** Health of each service, for the status page and the report form (counts only). */
+  @GetMapping("/service-status")
+  public ResponseEntity<List<ServiceStatusResponse>> serviceStatus() {
+    return ResponseEntity.ok(catalog.serviceStatus());
   }
 
   @GetMapping("/priority-preview")

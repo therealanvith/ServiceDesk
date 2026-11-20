@@ -21,11 +21,13 @@ public record CreateIncidentRequest(
     /** Optional affected IT service; its business criticality feeds into the priority. */
     UUID serviceId,
     /** True when the reporter kept the assistant's suggested classification; noted in the audit. */
-    Boolean aiSuggestionAccepted) {
+    Boolean aiSuggestionAccepted,
+    /** Set from "This affects me too": the open issue this report joins. */
+    UUID relatedIncidentId) {
 
   public CreateIncidentRequest(
       String title, String description, Category category, Impact impact, Urgency urgency) {
-    this(title, description, category, impact, urgency, null, null);
+    this(title, description, category, impact, urgency, null, null, null);
   }
 
   public CreateIncidentRequest(
@@ -35,6 +37,6 @@ public record CreateIncidentRequest(
       Impact impact,
       Urgency urgency,
       UUID serviceId) {
-    this(title, description, category, impact, urgency, serviceId, null);
+    this(title, description, category, impact, urgency, serviceId, null, null);
   }
 }
