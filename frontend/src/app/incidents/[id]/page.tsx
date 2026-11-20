@@ -1,5 +1,6 @@
 "use client";
 
+import { AssistantPanel } from "@/components/AssistantPanel";
 import { AuditTimeline } from "@/components/AuditTimeline";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
@@ -14,6 +15,7 @@ import {
   CRITICALITY_LABELS,
   ESCALATION_LABELS,
   formatDateTime,
+  isAdmin,
   timeAgo,
 } from "@/lib/labels";
 import Link from "next/link";
@@ -35,7 +37,11 @@ export default function IncidentDetailPage() {
   const [commentsFailed, setCommentsFailed] = useState(false);
   const [auditFailed, setAuditFailed] = useState(false);
   const panelVersion = useRef(0);
-  const [replyRequest, setReplyRequest] = useState(0);
+  const [dialogRequest, setDialogRequest] = useState<
+    { id: number; kind: "provideInfo" | "resolve"; text?: string } | undefined
+  >();
+  const requestDialog = (kind: "provideInfo" | "resolve", text?: string) =>
+    setDialogRequest((prev) => ({ id: (prev?.id ?? 0) + 1, kind, text }));
 
   // Comments and history load separately from the ticket, so one failing never hides the other,
   // and after an action the confirmed ticket stays on screen while these refresh.
@@ -149,6 +155,17 @@ export default function IncidentDetailPage() {
           </section>
 
           {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
+          {currentUserRole !== "EMPLOYEE" && (
+            <AssistantPanel
+              incidentId={incident.id}
+              onUseAsResolution={
+                incident.status === "IN_PROGRESS" &&
+                (isAdmin(currentUserRole) || incident.assignee?.id === user?.id)
+                  ? (text) => requestDialog("resolve", text)
+                  : undefined
+              }
+            />
+          )}
 
           {commentsFailed ? (
             <PanelError title="Updates" onRetry={loadPanels} />
@@ -158,7 +175,7 @@ export default function IncidentDetailPage() {
               initialComments={comments}
               currentUserRole={currentUserRole}
               status={incident.status}
-              onReply={isReporter ? () => setReplyRequest((n) => n + 1) : undefined}
+              onReply={isReporter ? () => requestDialog("provideInfo") : undefined}
             />
           )}
 
@@ -263,7 +280,7 @@ export default function IncidentDetailPage() {
             currentUserRole={currentUserRole}
             isReporter={isReporter}
             isAssignee={Boolean(user && incident.assignee?.id === user.id)}
-            replyRequest={replyRequest}
+            dialogRequest={dialogRequest}
             onUpdate={(updated) => {
               // The action succeeded: show the confirmed ticket and refresh only the panels.
               setIncident(updated);

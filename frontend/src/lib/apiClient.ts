@@ -195,6 +195,29 @@ export interface CategorySuggestion {
   matchedKeywords: string[];
 }
 
+/** "gemini" when the language model answered, "rules" for the built-in fallback. */
+export interface TriageSuggestion {
+  category: Category;
+  impact: Impact;
+  urgency: Urgency;
+  serviceId: string | null;
+  serviceName: string | null;
+  predictedPriority: Priority;
+  reason: string;
+  source: string;
+}
+
+export interface AssistantAdvice {
+  summary: string;
+  steps: string[];
+  source: string;
+}
+
+export interface AssistantSummary {
+  summary: string;
+  source: string;
+}
+
 export type EscalationLevel = "NONE" | "TEAM_LEAD" | "ADMINISTRATOR" | "IT_MANAGER";
 
 export interface TechnicianItem {
@@ -480,7 +503,18 @@ export const api = {
     impact: Impact;
     urgency: Urgency;
     serviceId?: string;
+    aiSuggestionAccepted?: boolean;
   }) => apiClient<IncidentDetail>("/incidents", post(data)),
+
+  // Assistant (Gemini, or built-in rules when it isn't configured)
+  triage: (title: string, description: string) =>
+    apiClient<TriageSuggestion>("/incidents/triage", post({ title, description })),
+  selfHelp: (title: string, description: string) =>
+    apiClient<AssistantAdvice>("/incidents/self-help", post({ title, description })),
+  selfHelpFeedback: (helped: boolean) =>
+    apiClient<void>("/incidents/self-help/feedback", post({ helped })),
+  suggestFix: (id: string) => apiClient<AssistantAdvice>(`/incidents/${id}/ai/suggest-fix`, post()),
+  aiSummary: (id: string) => apiClient<AssistantSummary>(`/incidents/${id}/ai/summary`, post()),
 
   listIncidents: (params: IncidentQuery = {}) => {
     const query = new URLSearchParams();

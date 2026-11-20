@@ -45,6 +45,12 @@ app:
       client-id: ${GOOGLE_CLIENT_ID:}
       # Optional comma-separated Google Workspace domains allowed to sign in (e.g. example.edu).
       allowed-domains: ${GOOGLE_ALLOWED_DOMAINS:}
+  ai:
+    gemini:
+      # Google AI Studio key; empty means the rule-based assistant answers everything.
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-2.5-flash}
+      timeout-seconds: 8
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
     # Only behind a known reverse proxy: otherwise clients could choose their own address.

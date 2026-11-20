@@ -1,5 +1,6 @@
 "use client";
 
+import { AssistantHelper } from "@/components/AssistantHelper";
 import { PriorityMatrixPreview } from "@/components/PriorityMatrixPreview";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -9,6 +10,7 @@ import {
   type ItService,
   type PriorityPreview,
   type SimilarIncident,
+  type TriageSuggestion,
   type Urgency,
   api,
 } from "@/lib/apiClient";
@@ -43,6 +45,7 @@ export default function NewIncidentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [relatedNumber, setRelatedNumber] = useState<string | null>(null);
+  const [triage, setTriage] = useState<TriageSuggestion | null>(null);
 
   // "This affects me too" on All issues opens this page pre-filled with a reference to the issue.
   useEffect(() => {
@@ -137,6 +140,13 @@ export default function NewIncidentPage() {
         impact,
         urgency,
         serviceId: serviceId || undefined,
+        // Noted in the audit trail when the reporter kept every suggested value.
+        aiSuggestionAccepted:
+          triage !== null &&
+          triage.category === category &&
+          triage.impact === impact &&
+          triage.urgency === urgency &&
+          (triage.serviceId ?? "") === serviceId,
       });
       router.push(`/incidents/${created.id}`);
     } catch (err: unknown) {
@@ -194,6 +204,19 @@ export default function NewIncidentPage() {
               placeholder="Where is it, who’s affected, and what have you already tried?"
             />
           </label>
+
+          <AssistantHelper
+            title={title}
+            description={description}
+            onApply={(s) => {
+              setTriage(s);
+              setCategory(s.category);
+              setCategoryTouched(true);
+              setImpact(s.impact);
+              setUrgency(s.urgency);
+              if (s.serviceId) setServiceId(s.serviceId);
+            }}
+          />
 
           {duplicates.length > 0 && (
             <output className="callout callout-warn">

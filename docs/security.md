@@ -35,6 +35,20 @@ sign-in and sign-up buttons count down until they work again.
   could pick any address by sending the header itself.
 - The health check and the live-updates stream are not limited.
 
+### Assistant (Gemini) and prompt injection
+
+- `GEMINI_API_KEY` lives only on the server; the browser talks to our API, never to Google.
+- Ticket text is wrapped in `<ticket>` tags and the system instruction says it is data, never
+  instructions. Answers are forced into a JSON schema and checked again on the server: enum values
+  must parse, a suggested service must be one we offered, steps are capped at four and all text
+  is length-limited and stripped of control characters. Anything else is discarded.
+- If Gemini is not configured, times out (8 s) or returns something unusable, the rule-based
+  assistant answers instead; each answer says which one produced it.
+- Self-help for employees uses only the fix text of similar resolved tickets: never another
+  ticket's number, title or reporter. Fix suggestions and summaries are staff-only and only for
+  tickets the user may open.
+- AI endpoints have their own per-user rate limit (20 / min) because they call a paid API.
+
 ## 2. Roles and permissions
 
 Authorization is enforced on the server in three layers: URL rules (`SecurityConfig`), method

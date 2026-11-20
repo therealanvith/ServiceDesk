@@ -2,6 +2,11 @@ package com.servicedesk.api;
 
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
+import com.servicedesk.api.dto.AssistantDtos.AdviceResponse;
+import com.servicedesk.api.dto.AssistantDtos.SelfHelpFeedbackRequest;
+import com.servicedesk.api.dto.AssistantDtos.SummaryResponse;
+import com.servicedesk.api.dto.AssistantDtos.TriageRequest;
+import com.servicedesk.api.dto.AssistantDtos.TriageResponse;
 import com.servicedesk.api.dto.AuditLogResponse;
 import com.servicedesk.api.dto.CancelIncidentRequest;
 import com.servicedesk.api.dto.CategorySuggestionResponse;
@@ -17,6 +22,7 @@ import com.servicedesk.api.dto.ProvideInfoRequest;
 import com.servicedesk.api.dto.RequestInfoRequest;
 import com.servicedesk.api.dto.ResolveIncidentRequest;
 import com.servicedesk.api.dto.SimilarIncidentResponse;
+import com.servicedesk.application.AssistantApplicationService;
 import com.servicedesk.application.IncidentApplicationService;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.IncidentStatus;
@@ -48,9 +54,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class IncidentController {
 
   private final IncidentApplicationService incidentService;
+  private final AssistantApplicationService assistant;
 
-  public IncidentController(IncidentApplicationService incidentService) {
+  public IncidentController(
+      IncidentApplicationService incidentService, AssistantApplicationService assistant) {
     this.incidentService = incidentService;
+    this.assistant = assistant;
   }
 
   @PostMapping
@@ -104,6 +113,38 @@ public class IncidentController {
   public ResponseEntity<CategorySuggestionResponse> suggestCategory(
       @Valid @RequestBody IncidentDraftRequest draft) {
     return ResponseEntity.ok(incidentService.suggestCategory(draft));
+  }
+
+  /** Assistant: suggested category, impact, urgency and service for a ticket being written. */
+  @PostMapping("/triage")
+  public ResponseEntity<TriageResponse> triage(@Valid @RequestBody TriageRequest request) {
+    return ResponseEntity.ok(assistant.triage(request));
+  }
+
+  /** Assistant: steps to try before filing a ticket. */
+  @PostMapping("/self-help")
+  public ResponseEntity<AdviceResponse> selfHelp(@Valid @RequestBody TriageRequest request) {
+    return ResponseEntity.ok(assistant.selfHelp(request));
+  }
+
+  /** Records whether the self-help steps solved the problem (no ticket filed). */
+  @PostMapping("/self-help/feedback")
+  public ResponseEntity<Void> selfHelpFeedback(
+      @Valid @RequestBody SelfHelpFeedbackRequest request, Principal principal) {
+    assistant.recordSelfHelpFeedback(request.helped(), principal.getName());
+    return ResponseEntity.noContent().build();
+  }
+
+  @PostMapping("/{id}/ai/suggest-fix")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<AdviceResponse> suggestFix(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(assistant.suggestFix(id, principal.getName()));
+  }
+
+  @PostMapping("/{id}/ai/summary")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<SummaryResponse> summary(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(assistant.summarize(id, principal.getName()));
   }
 
   /** Open tickets that look like the one being written (possible duplicates). */

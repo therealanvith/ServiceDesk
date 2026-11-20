@@ -41,6 +41,8 @@ import com.servicedesk.domain.incident.IncidentId;
 import com.servicedesk.domain.incident.IncidentStatus;
 import com.servicedesk.domain.incident.UpdateKind;
 import com.servicedesk.domain.intelligence.CategorySuggestionStrategy;
+import com.servicedesk.domain.intelligence.IncidentAssistant.PastFix;
+import com.servicedesk.domain.intelligence.IncidentAssistant.TicketContext;
 import com.servicedesk.domain.intelligence.JaccardSimilarityStrategy;
 import com.servicedesk.domain.intelligence.KeywordCategoryClassifier;
 import com.servicedesk.domain.intelligence.SimilarityStrategy;
@@ -177,7 +179,10 @@ public class IncidentApplicationService {
                 + incident.getImpact()
                 + ", urgency "
                 + incident.getUrgency()
-                + (service != null ? ", service criticality " + service.getCriticality() : "")));
+                + (service != null ? ", service criticality " + service.getCriticality() : "")
+                + (Boolean.TRUE.equals(request.aiSuggestionAccepted())
+                    ? "; the assistant's suggested classification was kept"
+                    : "")));
 
     // Attempt automatic assignment using current strategy
     List<User> technicians = userRepository.findTechnicians();
@@ -797,6 +802,60 @@ public class IncidentApplicationService {
             .filter(inc -> inc.getStatus() != IncidentStatus.CANCELLED)
             .filter(inc -> canView(inc, requester))
             .toList());
+  }
+
+  /** A ticket the user may see, flattened for the assistant (staff endpoints only). */
+  @Transactional(readOnly = true)
+  public TicketContext assistantContext(UUID incidentId, String username) {
+    Incident incident = loadVisibleIncident(incidentId, loadUser(username));
+    List<String> timeline =
+        commentJpaRepository.findByIncidentIdOrderByCreatedAtAsc(incidentId).stream()
+            .map(
+                c ->
+                    (c.isInternal() ? "Internal note" : c.getKind().name())
+                        + " by "
+                        + c.getAuthor().getFullName()
+                        + ": "
+                        + c.getCommentText())
+            .toList();
+    if (timeline.size() > 30) {
+      timeline = timeline.subList(timeline.size() - 30, timeline.size());
+    }
+    return new TicketContext(
+        incident.getIncidentNumber(),
+        incident.getTitle(),
+        incident.getDescription(),
+        incident.getCategory().name(),
+        incident.getStatus().name(),
+        incident.getPriority().name(),
+        timeline);
+  }
+
+  /** How the closest resolved tickets were fixed, best match first (at most three). */
+  @Transactional(readOnly = true)
+  public List<PastFix> resolvedFixesLike(String text, UUID excludeId) {
+    if (text == null || text.isBlank()) {
+      return List.of();
+    }
+    record Scored(Incident incident, double score) {}
+    return incidentRepository.findAll().stream()
+        .filter(
+            inc ->
+                inc.getStatus() == IncidentStatus.RESOLVED
+                    || inc.getStatus() == IncidentStatus.CLOSED)
+        .filter(inc -> inc.getResolutionSummary() != null && !inc.getResolutionSummary().isBlank())
+        .filter(inc -> excludeId == null || !inc.getId().getValue().equals(excludeId))
+        .map(
+            inc ->
+                new Scored(
+                    inc,
+                    similarityStrategy.calculateSimilarity(
+                        text, inc.getTitle() + " " + inc.getDescription())))
+        .filter(s -> s.score() >= 0.2)
+        .sorted(Comparator.comparingDouble(Scored::score).reversed())
+        .limit(3)
+        .map(s -> new PastFix(s.incident().getTitle(), s.incident().getResolutionSummary()))
+        .toList();
   }
 
   public String getActiveAssignmentStrategyName() {

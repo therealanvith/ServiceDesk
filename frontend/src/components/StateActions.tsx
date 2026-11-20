@@ -11,8 +11,11 @@ interface StateActionsProps {
   isReporter: boolean;
   isAssignee: boolean;
   onUpdate: (updated: IncidentDetail) => void;
-  /** Bumped by the pinned question's "Reply" button to open the reply dialog. */
-  replyRequest?: number;
+  /**
+   * Opens a dialog from elsewhere on the page (the pinned question's Reply, or the assistant's
+   * "Use as resolution"); a new id re-opens it.
+   */
+  dialogRequest?: { id: number; kind: "provideInfo" | "resolve"; text?: string };
 }
 
 type DialogKind =
@@ -76,7 +79,7 @@ export function StateActions({
   isReporter,
   isAssignee,
   onUpdate,
-  replyRequest = 0,
+  dialogRequest,
 }: StateActionsProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,11 +119,11 @@ export function StateActions({
   };
 
   useEffect(() => {
-    if (replyRequest > 0) {
-      setText("");
-      setDialog("provideInfo");
+    if (dialogRequest) {
+      setText(dialogRequest.text ?? "");
+      setDialog(dialogRequest.kind);
     }
-  }, [replyRequest]);
+  }, [dialogRequest]);
 
   const handleAction = async (actionFn: () => Promise<IncidentDetail>) => {
     setLoading(true);

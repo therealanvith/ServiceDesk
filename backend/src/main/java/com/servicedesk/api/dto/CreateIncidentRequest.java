@@ -19,10 +19,22 @@ public record CreateIncidentRequest(
     @NotNull(message = "Impact is required") Impact impact,
     @NotNull(message = "Urgency is required") Urgency urgency,
     /** Optional affected IT service; its business criticality feeds into the priority. */
-    UUID serviceId) {
+    UUID serviceId,
+    /** True when the reporter kept the assistant's suggested classification; noted in the audit. */
+    Boolean aiSuggestionAccepted) {
 
   public CreateIncidentRequest(
       String title, String description, Category category, Impact impact, Urgency urgency) {
-    this(title, description, category, impact, urgency, null);
+    this(title, description, category, impact, urgency, null, null);
+  }
+
+  public CreateIncidentRequest(
+      String title,
+      String description,
+      Category category,
+      Impact impact,
+      Urgency urgency,
+      UUID serviceId) {
+    this(title, description, category, impact, urgency, serviceId, null);
   }
 }
