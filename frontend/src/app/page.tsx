@@ -1,8 +1,10 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { EMPTY_FILTERS, type FilterState, SearchFilters } from "@/components/SearchFilters";
+import { SkeletonBlock } from "@/components/Skeleton";
 import { SlaBadge } from "@/components/SlaBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAuth } from "@/context/AuthContext";
@@ -16,6 +18,7 @@ import {
   checkBackendHealth,
 } from "@/lib/apiClient";
 import { CATEGORY_LABELS, isAdmin, timeAgo } from "@/lib/labels";
+import { type Move, allowedMoves, performMove } from "@/lib/lifecycle";
 import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -39,6 +42,8 @@ export default function IncidentsDashboardPage() {
   const [workload, setWorkload] = useState<Workload | null>(null);
   const [lookupFailed, setLookupFailed] = useState(false);
   const [lookupKey, setLookupKey] = useState(0);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
 
   const role = user?.role;
   const admin = isAdmin(role);
@@ -142,8 +147,50 @@ export default function IncidentsDashboardPage() {
     setLookupKey((k) => k + 1);
   };
 
+  // The one-click step for the person working a ticket: acknowledge it, or start work on it.
+  // Technicians also see tickets they reported, so only their assigned ones get the button.
+  const quickMove = (ticket: IncidentSummary): Move | undefined => {
+    if (ticket.status !== "ASSIGNED" && ticket.status !== "ACKNOWLEDGED") return undefined;
+    const isAssignee = ticket.assigneeName === user?.fullName;
+    return allowedMoves(ticket.status, role, isAssignee).find((move) => !move.text);
+  };
+
+  const runQuickMove = async (ticket: IncidentSummary, move: Move) => {
+    setRowBusy(ticket.id);
+    setRowError(null);
+    try {
+      const updated = await performMove(ticket.id, move.action);
+      // Refresh just this row from the confirmed ticket.
+      setIncidents((rows) =>
+        rows.map((row) =>
+          row.id === updated.id
+            ? {
+                ...row,
+                status: updated.status,
+                priority: updated.priority,
+                slaStatus: updated.slaWindow?.slaStatus ?? row.slaStatus,
+                assigneeName: updated.assignee?.fullName ?? row.assigneeName,
+              }
+            : row
+        )
+      );
+      showToast({
+        title: move.action === "acknowledge" ? "Ticket acknowledged" : "Work started",
+        message: `${ticket.incidentNumber} · ${ticket.title}`,
+        tone: "success",
+      });
+    } catch (err: unknown) {
+      setRowError({
+        id: ticket.id,
+        message: err instanceof Error ? err.message : "Action failed",
+      });
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
   if (authLoading || !user) {
-    return <output className="empty">Loading…</output>;
+    return <SkeletonBlock label="Loading…" />;
   }
 
   const filtered = Object.values(filters).some(Boolean);
@@ -238,7 +285,7 @@ export default function IncidentsDashboardPage() {
         </SearchFilters>
 
         {loading ? (
-          <output className="empty">Loading…</output>
+          <SkeletonBlock label="Loading tickets…" rows={8} />
         ) : error ? (
           <div className="empty" role="alert">
             <h2>Couldn’t load tickets</h2>
@@ -304,52 +351,71 @@ export default function IncidentsDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {incidents.map((ticket) => (
-                    <tr key={ticket.id}>
-                      <td className="col-id">{ticket.incidentNumber}</td>
-                      <td className="col-title row-link-cell">
-                        <Link className="title-link" href={`/incidents/${ticket.id}`}>
-                          {ticket.title}
-                        </Link>
-                      </td>
-                      <td className="col-nowrap">
-                        <StatusBadge status={ticket.status} />
-                      </td>
-                      <td className="col-nowrap">
-                        <PriorityBadge priority={ticket.priority} />
-                      </td>
-                      <td className="hide-sm">
-                        {ticket.serviceName ?? <span className="unassigned">—</span>}
-                      </td>
-                      <td className="hide-sm">{CATEGORY_LABELS[ticket.category]}</td>
-                      {role !== "TECHNICIAN" && (
-                        <td className="hide-sm col-nowrap">
-                          {ticket.assigneeName === "Unassigned" ? (
-                            <span className="unassigned">Unassigned</span>
-                          ) : (
-                            ticket.assigneeName
+                  {incidents.map((ticket) => {
+                    const move = quickMove(ticket);
+                    return (
+                      <tr key={ticket.id}>
+                        <td className="col-id">{ticket.incidentNumber}</td>
+                        <td className="col-title row-link-cell">
+                          <Link className="title-link" href={`/incidents/${ticket.id}`}>
+                            {ticket.title}
+                          </Link>
+                        </td>
+                        <td className="col-nowrap">
+                          <StatusBadge status={ticket.status} />
+                          {move && (
+                            <button
+                              type="button"
+                              className="btn btn-sm row-action"
+                              disabled={rowBusy === ticket.id}
+                              aria-label={`${move.action === "acknowledge" ? "Acknowledge" : "Start"} ${ticket.incidentNumber}`}
+                              onClick={() => void runQuickMove(ticket, move)}
+                            >
+                              {move.action === "acknowledge" ? "Acknowledge" : "Start"}
+                            </button>
+                          )}
+                          {rowError?.id === ticket.id && (
+                            <span className="row-action-error" role="alert">
+                              {rowError.message}
+                            </span>
                           )}
                         </td>
-                      )}
-                      {role !== "EMPLOYEE" && (
-                        <td className="hide-sm col-nowrap">{ticket.reporterName}</td>
-                      )}
-                      <td className="hide-sm">
-                        <SlaBadge
-                          status={ticket.slaStatus}
-                          isPaused={ticket.status === "PENDING_INFO"}
-                        />
-                      </td>
-                      <td className="hide-sm col-nowrap muted">
-                        <time
-                          dateTime={ticket.createdAt}
-                          title={new Date(ticket.createdAt).toLocaleString()}
-                        >
-                          {timeAgo(ticket.createdAt)}
-                        </time>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="col-nowrap">
+                          <PriorityBadge priority={ticket.priority} />
+                        </td>
+                        <td className="hide-sm">
+                          {ticket.serviceName ?? <span className="unassigned">—</span>}
+                        </td>
+                        <td className="hide-sm">{CATEGORY_LABELS[ticket.category]}</td>
+                        {role !== "TECHNICIAN" && (
+                          <td className="hide-sm col-nowrap">
+                            {ticket.assigneeName === "Unassigned" ? (
+                              <span className="unassigned">Unassigned</span>
+                            ) : (
+                              ticket.assigneeName
+                            )}
+                          </td>
+                        )}
+                        {role !== "EMPLOYEE" && (
+                          <td className="hide-sm col-nowrap">{ticket.reporterName}</td>
+                        )}
+                        <td className="hide-sm">
+                          <SlaBadge
+                            status={ticket.slaStatus}
+                            isPaused={ticket.status === "PENDING_INFO"}
+                          />
+                        </td>
+                        <td className="hide-sm col-nowrap muted">
+                          <time
+                            dateTime={ticket.createdAt}
+                            title={new Date(ticket.createdAt).toLocaleString()}
+                          >
+                            {timeAgo(ticket.createdAt)}
+                          </time>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

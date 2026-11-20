@@ -69,6 +69,7 @@ export function SearchFilters({
           onChange={(e) => set("searchText", e.target.value)}
           placeholder="Search by title or ticket number"
           aria-label="Search tickets"
+          data-shortcut="search"
         />
       </label>
       {choices.map(({ key, label, options }) => (

@@ -5,6 +5,7 @@ import { AuditTimeline } from "@/components/AuditTimeline";
 import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
+import { SkeletonBlock } from "@/components/Skeleton";
 import { SlaBadge } from "@/components/SlaBadge";
 import { StateActions } from "@/components/StateActions";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -142,7 +143,7 @@ export default function IncidentDetailPage() {
   }
 
   if (loading) {
-    return <output className="empty">Loading ticket…</output>;
+    return <SkeletonBlock label="Loading ticket…" variant="detail" />;
   }
 
   if (error || !incident) {

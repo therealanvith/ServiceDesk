@@ -2315,3 +2315,321 @@ li.is-inactive {
   max-width: 220px;
   padding: 4px 8px;
 }
+
+/* Loading placeholders shaped like the content on its way. */
+.skeleton {
+  display: block;
+  max-width: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--hover) 25%, var(--line) 50%, var(--hover) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-block {
+  display: grid;
+  gap: 12px;
+}
+
+.skeleton-list {
+  padding: 4px 12px;
+  gap: 0;
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.skeleton-row .skeleton:nth-child(2) {
+  flex: 1;
+}
+
+.skeleton-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+}
+
+.skeleton-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.skeleton-board {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  overflow: hidden;
+}
+
+.skeleton-column,
+.skeleton-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.skeleton-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .skeleton-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Technician board: one column per lifecycle stage, scrolling sideways on narrow screens. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(240px, 1fr));
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 160px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  scroll-snap-align: start;
+  transition: background-color 120ms, border-color 120ms, opacity 120ms;
+}
+
+.board-column-header {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: 2px 2px 4px;
+}
+
+.board-column-header h2 {
+  font-size: 13px;
+}
+
+.board-column-header .field-hint {
+  margin-left: auto;
+}
+
+/* While dragging, only the columns a card may move to stand out. */
+.board.is-dragging .board-column:not(.is-target) {
+  opacity: 0.55;
+}
+
+.board-column.is-target {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: var(--accent-soft);
+}
+
+.board-column.is-over {
+  border-style: solid;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.board-cards {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-empty {
+  margin: 0;
+  padding: 16px 4px;
+  color: var(--faint);
+  font-size: 13px;
+  text-align: center;
+}
+
+.board-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  transition: border-color 120ms, box-shadow 120ms, transform 120ms, opacity 120ms;
+}
+
+.board-card.is-draggable {
+  cursor: grab;
+}
+
+.board-card:hover,
+.board-card:focus-within {
+  border-color: var(--line-strong);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
+}
+
+.board-card.is-dragged {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.board-card-top,
+.board-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.board-card-title {
+  overflow-wrap: anywhere;
+}
+
+.board-card-assignee {
+  font-size: 12px;
+}
+
+.board-card-error {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.move-menu {
+  position: relative;
+  justify-self: start;
+}
+
+.move-menu-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.move-menu-item {
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: background-color 80ms;
+}
+
+.move-menu-item:hover,
+.move-menu-item:focus-visible {
+  background: var(--hover);
+}
+
+/* One-click acknowledge / start in the ticket list, above the row's whole-row link. */
+.row-action {
+  position: relative;
+  z-index: 1;
+  margin-left: 8px;
+}
+
+.row-action-error {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 4px;
+  color: var(--red);
+  font-size: 12px;
+  white-space: normal;
+}
+
+/* Keyboard shortcut help. */
+.shortcut-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.shortcut-list div {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.shortcut-list dd {
+  margin: 0;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Subtle hover feedback on the list. */
+.table tbody tr {
+  transition: background-color 100ms;
+}
+
+.title-link {
+  transition: color 100ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+
+  .board-column,
+  .board-card,
+  .move-menu-item,
+  .table tbody tr,
+  .title-link,
+  .btn {
+    transition: none;
+  }
+
+  .board-card.is-dragged {
+    transform: none;
+  }
+}

@@ -49,6 +49,7 @@ export function Navbar() {
               ? "My queue"
               : "My tickets",
         },
+        ...(user.role !== "EMPLOYEE" ? [{ href: "/board", label: "Board" }] : []),
         { href: "/issues", label: "All issues" },
         { href: "/status", label: "Service status" },
         { href: "/incidents/new", label: "Report an issue" },
