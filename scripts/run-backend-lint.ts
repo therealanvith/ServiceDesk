@@ -14,6 +14,7 @@ function findMavenCommand(backendDir: string): string | null {
     const check = spawnSync("mvn", ["-version"], {
       shell: true,
       stdio: "ignore",
+      timeout: 5000,
     });
     if (check.status === 0) {
       return "mvn";
@@ -32,6 +33,7 @@ function findMavenCommand(backendDir: string): string | null {
         cwd: backendDir,
         shell: true,
         stdio: "ignore",
+        timeout: 5000,
       });
       if (check.status === 0) {
         return wrapperCommand;
@@ -40,6 +42,49 @@ function findMavenCommand(backendDir: string): string | null {
   }
 
   return null;
+}
+
+const JDK21_MAVEN_IMAGE = "maven:3.9.9-eclipse-temurin-21-alpine";
+
+/**
+ * Runs `spotless:check` under JDK 21 in Docker. Returns true when it passes, exits with the
+ * check's status when it finds violations, and returns false when Docker can't be used.
+ */
+function runSpotlessInDocker(backendDir: string): boolean {
+  const docker = spawnSync("docker", ["info"], { stdio: "ignore", timeout: 10000 });
+  if (docker.status !== 0) {
+    return false;
+  }
+  console.log("[pre-commit] Local JDK can't run google-java-format; checking in a JDK 21 container...");
+  const result = spawnSync(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "-v",
+      `${backendDir}:/w`,
+      "-v",
+      "servicedesk-m2:/root/.m2",
+      "-w",
+      "/w",
+      JDK21_MAVEN_IMAGE,
+      "mvn",
+      "-B",
+      "-q",
+      "spotless:check",
+    ],
+    { encoding: "utf-8", env: { ...process.env, MSYS_NO_PATHCONV: "1" } }
+  );
+  if (result.status === 0) {
+    return true;
+  }
+  process.stdout.write(result.stdout ?? "");
+  process.stderr.write(result.stderr ?? "");
+  console.error(
+    "\n[ERROR] Backend code formatting check failed!\n" +
+      `  Fix with: docker run --rm -v "${backendDir}:/w" -v servicedesk-m2:/root/.m2 -w /w ${JDK21_MAVEN_IMAGE} mvn -B -q spotless:apply\n`
+  );
+  process.exit(result.status ?? 1);
 }
 
 function runBackendLint(): void {
@@ -56,13 +101,41 @@ function runBackendLint(): void {
 
   console.log("\n[pre-commit] Running backend Spotless code formatting check...");
 
-  const result = spawnSync(mvnCmd, ["-B", "-q", "spotless:check"], {
+  const result = spawnSync(mvnCmd, ["-B", "spotless:check"], {
     cwd: backendDir,
     shell: true,
-    stdio: "inherit",
+    encoding: "utf-8",
   });
 
+  const fullOutput = (result.stdout ?? "") + (result.stderr ?? "");
+
   if (result.status !== 0) {
+    if (
+      fullOutput.includes("NoSuchMethodError") ||
+      fullOutput.includes("DeferredDiagnosticHandler") ||
+      fullOutput.includes("API incompatibility")
+    ) {
+      // google-java-format needs JDK 21; newer JDKs break its internal javac calls. Run the same
+      // check in a JDK 21 container instead of silently skipping, so CI never sees surprises.
+      if (runSpotlessInDocker(backendDir)) {
+        console.log("[pre-commit] Backend formatting check passed (JDK 21 container).\n");
+        process.exit(0);
+      }
+      console.warn(
+        "\n[WARNING] Your JDK is incompatible with google-java-format and Docker is not available.\n" +
+          "  Skipping local Spotless enforcement. GitHub Actions CI (JDK 21 Temurin) will enforce formatting.\n" +
+          "  Install JDK 21 or start Docker to check locally.\n"
+      );
+      process.exit(0);
+    }
+
+    if (result.stdout) {
+      process.stdout.write(result.stdout);
+    }
+    if (result.stderr) {
+      process.stderr.write(result.stderr);
+    }
+
     console.error(
       "\n[ERROR] Backend code formatting check failed!\n" +
         "  Run 'mvn spotless:apply' (or './mvnw spotless:apply') to automatically format Java files with Google Java Format.\n"

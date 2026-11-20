@@ -14,7 +14,7 @@ An employee reports an enterprise Wi-Fi connectivity issue. The system dynamical
 ### Step-by-Step Actions
 1. **Login as Employee (`emp_alan`)**:
    - Navigate to `http://localhost:3000`.
-   - Log in using credentials `emp_alan` / `password123`.
+   - Log in using credentials `emp` / `test`.
 2. **Report New Incident**:
    - Title: `Classroom C201 Access Point blinking red - No Wi-Fi`
    - Category: `NETWORK`

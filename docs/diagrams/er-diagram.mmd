@@ -11,10 +11,11 @@ erDiagram
     USERS {
         uuid id PK
         varchar_50 username UK
-        varchar_255 password_hash
+        varchar_255 password_hash "nullable (Google-only accounts)"
+        varchar_255 google_sub UK "nullable"
         varchar_100 full_name
-        varchar_100 email UK
-        varchar_30 role "EMPLOYEE | TECHNICIAN | ADMINISTRATOR"
+        varchar_100 email UK "nullable"
+        varchar_30 role "EMPLOYEE | TECHNICIAN | ADMINISTRATOR | ROOT"
         boolean is_active
         timestamp_with_time_zone created_at
         timestamp_with_time_zone updated_at
@@ -23,7 +24,7 @@ erDiagram
     USER_SKILLS {
         uuid id PK
         uuid user_id FK
-        varchar_50 category "NETWORK | HARDWARE | SOFTWARE | ACCESS"
+        varchar_50 category "NETWORK | HARDWARE | SOFTWARE | ACCESS | DATABASE | CLOUD | SECURITY | APPLICATION | STORAGE"
     }
 
     INCIDENTS {
@@ -31,13 +32,14 @@ erDiagram
         varchar_20 incident_number UK "e.g. INC-1001"
         varchar_200 title
         text description
-        varchar_50 category "NETWORK | HARDWARE | SOFTWARE | ACCESS"
+        varchar_50 category "NETWORK | HARDWARE | SOFTWARE | ACCESS | DATABASE | CLOUD | SECURITY | APPLICATION | STORAGE"
         varchar_30 status "REPORTED | ASSIGNED | IN_PROGRESS | PENDING_INFO | RESOLVED | CLOSED | CANCELLED"
         varchar_30 priority "P1_CRITICAL | P2_HIGH | P3_MEDIUM | P4_LOW"
         varchar_30 impact "HIGH | MEDIUM | LOW"
         varchar_30 urgency "HIGH | MEDIUM | LOW"
         uuid reporter_id FK
         uuid assignee_id FK "nullable"
+        uuid service_id FK "nullable"
         timestamp_with_time_zone response_deadline
         timestamp_with_time_zone resolution_deadline
         timestamp_with_time_zone paused_at "nullable (needs-info)"
@@ -46,6 +48,11 @@ erDiagram
         text resolution_notes "nullable"
         timestamp_with_time_zone resolved_at "nullable"
         timestamp_with_time_zone closed_at "nullable"
+        timestamp_with_time_zone responded_at "nullable"
+        timestamp_with_time_zone escalated_at "nullable"
+        smallint feedback_rating "nullable, 1-5"
+        text feedback_comment "nullable"
+        bigint version "optimistic lock"
         timestamp_with_time_zone created_at
         timestamp_with_time_zone updated_at
     }
@@ -80,3 +87,22 @@ erDiagram
         boolean is_read
         timestamp_with_time_zone created_at
     }
+
+    IT_SERVICES {
+        uuid id PK
+        varchar_100 name "unique"
+        text description "nullable"
+        varchar_20 criticality "LOW | MEDIUM | HIGH | CRITICAL"
+        boolean is_active
+        timestamp_with_time_zone created_at
+    }
+
+    SLA_POLICIES {
+        varchar_30 priority PK "P1_CRITICAL | P2_HIGH | P3_MEDIUM | P4_LOW"
+        integer response_minutes
+        integer resolution_minutes
+        timestamp_with_time_zone updated_at
+    }
+
+    IT_SERVICES ||--o{ INCIDENTS : "affected by"
+

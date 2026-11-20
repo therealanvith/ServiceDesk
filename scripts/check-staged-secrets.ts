@@ -14,6 +14,7 @@ function runGit(args: string[]): string {
   const result = spawnSync("git", args, {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    timeout: 5000,
   });
   if (result.error) {
     console.error(`Failed to execute git ${args.join(" ")}:`, result.error.message);
@@ -91,7 +92,17 @@ function checkStagedFiles(): void {
     const match = addedContent.match(secretKeyPattern);
     if (match && match[1] && match[2]) {
       const keyName = match[1];
-      const rawValue = match[2].trim().replace(/^["';]|["';]$/g, "");
+      const valueText = match[2].trim().replace(/[,;]+$/, "").trim();
+
+      // In source code only a string literal can hold a hardcoded secret. Type annotations
+      // (`password: string`), variables (`password: form.password`) and empty form defaults
+      // (`password: ""`) are not secrets. Config files (.yml, .properties, ...) stay strict.
+      const isSourceFile = /\.(?:[cm]?[jt]sx?|java|kt)$/.test(currentFile);
+      const literal = valueText.match(/^(["'`])(.*)\1$/);
+      if (isSourceFile && (!literal || literal[2] === "")) {
+        continue;
+      }
+      const rawValue = literal ? literal[2] : valueText.replace(/^["']|["']$/g, "");
 
       const isPlaceholder =
         placeholderValues.has(rawValue) ||

@@ -35,6 +35,20 @@ management:
 # Security and CORS configuration properties
 app:
   security:
-    jwt-secret: ${JWT_SECRET:default_jwt_secret_key_minimum_thirty_two_bytes_long}
+    # Required: no default, so the app refuses to start without a private signing key.
+    jwt-secret: ${JWT_SECRET}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  auth:
+    google:
+      # OAuth 2.0 Web client id from Google Cloud Console; empty disables Google sign-in.
+      client-id: ${GOOGLE_CLIENT_ID:}
+      # Optional comma-separated Google Workspace domains allowed to sign in (e.g. example.edu).
+      allowed-domains: ${GOOGLE_ALLOWED_DOMAINS:}
+  demo-accounts:
+    # Seeded demo accounts share a documented password; they're deactivated unless this is true.
+    enabled: ${DEMO_ACCOUNTS_ENABLED:false}
+  root:
+    username: ${ROOT_USERNAME:root}
+    # Only used to create the root account when none exists yet.
+    password: ${ROOT_PASSWORD:}

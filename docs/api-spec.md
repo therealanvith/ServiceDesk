@@ -12,26 +12,28 @@ Base URL prefix: `/api/v1`
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `POST` | `/auth/login` | Anonymous | `LoginRequest` | `AuthResponse` | `200 OK`, `401 Unauthorized` | Authenticate with username/password, returns JWT token and user profile. |
 | `GET` | `/users/me` | Any Authenticated | *None* | `UserProfileResponse` | `200 OK`, `401 Unauthorized` | Get current logged-in user details, role, and skills. |
-| `GET` | `/users/technicians` | `TECHNICIAN`, `ADMINISTRATOR` | *None* | `List<TechnicianResponse>` | `200 OK` | List active technicians with skills and current open ticket load. |
-| `PUT` | `/users/{id}/skills` | `ADMINISTRATOR` | `UpdateSkillsRequest` | `TechnicianResponse` | `200 OK`, `404 Not Found` | Update category skills assigned to a technician. |
+| `GET` | `/users/technicians` | `ADMINISTRATOR`, `ROOT` | *None* | `List<TechnicianResponse>` | `200 OK` | List active technicians with skills and current open ticket load. |
+| `PUT` | `/users/{id}/skills` | `ADMINISTRATOR`, `ROOT` | `UpdateSkillsRequest` | `TechnicianResponse` | `200 OK`, `404 Not Found` | Update category skills assigned to a technician. |
 
 ---
 
 ## 2. Incident Endpoints (`/api/v1/incidents`)
 
+Tickets outside the caller's scope return `404 Not Found` (their existence is not revealed); visible tickets the caller may not change return `403 Forbidden`.
+
 | Method | Endpoint | Allowed Roles | Request DTO | Response DTO | HTTP Status | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/incidents` | `EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR` | `CreateIncidentRequest` | `IncidentDetailResponse` | `201 Created`, `400 Bad Request` | Report a new incident. Computes priority, similarity, and runs auto-assignment. |
-| `GET` | `/incidents` | Any Authenticated | `IncidentFilterParams` (query params) | `PagedResponse<IncidentSummaryResponse>` | `200 OK` | Filtered incident list. Employees see own; Technicians/Admins see all. |
-| `GET` | `/incidents/{id}` | Any Authorized | *None* | `IncidentDetailResponse` | `200 OK`, `404 Not Found`, `403 Forbidden` | Retrieve complete details of a specific incident. |
-| `POST` | `/incidents/{id}/assign` | `TECHNICIAN`, `ADMINISTRATOR` | `AssignIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request`, `409 Conflict` | Assign or reassign incident to a technician (manual or trigger strategy). |
-| `POST` | `/incidents/{id}/start` | `TECHNICIAN`, `ADMINISTRATOR` | *None* | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Transition status from `ASSIGNED` to `IN_PROGRESS`. |
-| `POST` | `/incidents/{id}/request-info` | `TECHNICIAN`, `ADMINISTRATOR` | `RequestInfoRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Transition to `PENDING_INFO` and pause SLA resolution timer. |
-| `POST` | `/incidents/{id}/provide-info` | `EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR` | `ProvideInfoRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Return to `IN_PROGRESS` and resume SLA resolution timer. |
-| `POST` | `/incidents/{id}/resolve` | `TECHNICIAN`, `ADMINISTRATOR` | `ResolveIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request`, `409 Conflict` | Mark ticket as `RESOLVED` with mandatory resolution summary. |
-| `POST` | `/incidents/{id}/close` | `EMPLOYEE` (reporter), `ADMINISTRATOR` | `CloseIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Confirm resolution and move incident to immutable `CLOSED` state. |
-| `POST` | `/incidents/{id}/cancel` | `EMPLOYEE` (if reported), `ADMINISTRATOR` | `CancelIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Cancel incident with reason. |
-| `PUT` | `/incidents/{id}/priority` | `ADMINISTRATOR` | `OverridePriorityRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request` | Manually override priority level with mandatory audit remark. |
+| `POST` | `/incidents` | Any authenticated | `CreateIncidentRequest` | `IncidentDetailResponse` | `201 Created`, `400 Bad Request` | Report a new incident. Computes priority, similarity, and runs auto-assignment. |
+| `GET` | `/incidents` | Any Authenticated | `IncidentFilterParams` (query params) | `PagedResponse<IncidentSummaryResponse>` | `200 OK` | Filtered incident list. Employees see tickets they reported; technicians see tickets assigned to them or reported by them; administrators and root see all. |
+| `GET` | `/incidents/{id}` | Reporter, assignee, `ADMINISTRATOR`, `ROOT` | *None* | `IncidentDetailResponse` | `200 OK`, `404 Not Found` | Retrieve complete details of a specific incident. |
+| `POST` | `/incidents/{id}/assign` | `ADMINISTRATOR`, `ROOT` | `AssignIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request`, `409 Conflict` | Assign or reassign incident to a technician (manual or trigger strategy). |
+| `POST` | `/incidents/{id}/start` | Assigned `TECHNICIAN`, `ADMINISTRATOR`, `ROOT` | *None* | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Transition status from `ASSIGNED` to `IN_PROGRESS`. |
+| `POST` | `/incidents/{id}/request-info` | Assigned `TECHNICIAN`, `ADMINISTRATOR`, `ROOT` | `RequestInfoRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Transition to `PENDING_INFO` and pause SLA resolution timer. |
+| `POST` | `/incidents/{id}/provide-info` | Reporter, `ADMINISTRATOR`, `ROOT` | `ProvideInfoRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Return to `IN_PROGRESS` and resume SLA resolution timer. |
+| `POST` | `/incidents/{id}/resolve` | Assigned `TECHNICIAN`, `ADMINISTRATOR`, `ROOT` | `ResolveIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request`, `409 Conflict` | Mark ticket as `RESOLVED` with mandatory resolution summary. |
+| `POST` | `/incidents/{id}/close` | Reporter, `ADMINISTRATOR`, `ROOT` | `CloseIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Confirm resolution and move incident to immutable `CLOSED` state. |
+| `POST` | `/incidents/{id}/cancel` | Reporter (only while `REPORTED`), `ADMINISTRATOR`, `ROOT` | `CancelIncidentRequest` | `IncidentDetailResponse` | `200 OK`, `409 Conflict` | Cancel incident with reason. |
+| `PUT` | `/incidents/{id}/priority` | `ADMINISTRATOR`, `ROOT` | `OverridePriorityRequest` | `IncidentDetailResponse` | `200 OK`, `400 Bad Request` | Manually override priority level with mandatory audit remark. |
 
 ---
 
@@ -83,13 +85,13 @@ Base URL prefix: `/api/v1`
   "urgency": "HIGH",
   "reporter": {
     "id": "11111111-1111-1111-1111-111111111111",
-    "fullName": "Prof. Alan Turing",
-    "email": "aturing@campus.edu"
+    "fullName": "Employee",
+    "email": null
   },
   "assignee": {
     "id": "22222222-2222-2222-2222-222222222222",
-    "fullName": "Alice Smith (Network Specialist)",
-    "email": "alice@servicedesk.edu"
+    "fullName": "Network Technician",
+    "email": null
   },
   "slaWindow": {
     "responseDeadline": "2026-11-08T01:30:00Z",

@@ -23,3 +23,7 @@ app:
     jwt-secret: test_secret_key_minimum_thirty_two_characters_long_for_unit_tests
     cors:
       allowed-origins: http://localhost:3000
+
+logging:
+  level:
+    com.tngtech.archunit: ERROR
