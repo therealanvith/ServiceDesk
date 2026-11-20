@@ -7,6 +7,8 @@ erDiagram
     USERS ||--o{ INCIDENT_COMMENTS : "authors"
     USERS ||--o{ NOTIFICATIONS : "receives"
     INCIDENTS ||--o{ NOTIFICATIONS : "references"
+    INCIDENTS |o--o{ INCIDENTS : "major incident of"
+    USERS ||--o{ SELF_HELP_FEEDBACK : "gives"
 
     USERS {
         uuid id PK
@@ -17,6 +19,9 @@ erDiagram
         varchar_100 email UK "nullable"
         varchar_30 role "EMPLOYEE | TECHNICIAN | ADMINISTRATOR | ROOT"
         boolean is_active
+        boolean must_change_password
+        int max_active_tickets "open-ticket limit, 1-50, default 5"
+        boolean is_team_lead "receives L1 escalations"
         timestamp_with_time_zone created_at
         timestamp_with_time_zone updated_at
     }
@@ -33,13 +38,14 @@ erDiagram
         varchar_200 title
         text description
         varchar_50 category "NETWORK | HARDWARE | SOFTWARE | ACCESS | DATABASE | CLOUD | SECURITY | APPLICATION | STORAGE"
-        varchar_30 status "REPORTED | ASSIGNED | IN_PROGRESS | PENDING_INFO | RESOLVED | CLOSED | CANCELLED"
+        varchar_30 status "REPORTED | ASSIGNED | ACKNOWLEDGED | IN_PROGRESS | PENDING_INFO | RESOLVED | CLOSED | CANCELLED"
         varchar_30 priority "P1_CRITICAL | P2_HIGH | P3_MEDIUM | P4_LOW"
         varchar_30 impact "HIGH | MEDIUM | LOW"
         varchar_30 urgency "HIGH | MEDIUM | LOW"
         uuid reporter_id FK
         uuid assignee_id FK "nullable"
         uuid service_id FK "nullable"
+        uuid parent_incident_id FK "nullable, major incident (not itself)"
         timestamp_with_time_zone response_deadline
         timestamp_with_time_zone resolution_deadline
         timestamp_with_time_zone paused_at "nullable (needs-info)"
@@ -50,6 +56,7 @@ erDiagram
         timestamp_with_time_zone closed_at "nullable"
         timestamp_with_time_zone responded_at "nullable"
         timestamp_with_time_zone escalated_at "nullable"
+        varchar_20 escalation_level "NONE | TEAM_LEAD | ADMINISTRATOR | IT_MANAGER"
         smallint feedback_rating "nullable, 1-5"
         text feedback_comment "nullable"
         bigint version "optimistic lock"
@@ -63,6 +70,7 @@ erDiagram
         uuid author_id FK
         text comment_text
         boolean is_internal "technician-only note"
+        varchar_20 kind "COMMENT | QUESTION | ANSWER | PICKUP | RESOLUTION | STATUS"
         timestamp_with_time_zone created_at
     }
 
@@ -70,7 +78,7 @@ erDiagram
         uuid id PK
         uuid incident_id FK
         uuid actor_id FK "nullable (system actions)"
-        varchar_50 action "CREATED | STATUS_CHANGED | ASSIGNED | PRIORITY_OVERRIDDEN | SLA_BREACHED"
+        varchar_50 action "CREATED | STATUS_CHANGED | ASSIGNED | PRIORITY_OVERRIDDEN | SLA_BREACHED | ESCALATED | LINKED | UNLINKED"
         varchar_100 old_value "nullable"
         varchar_100 new_value "nullable"
         text remarks "nullable"
@@ -102,6 +110,13 @@ erDiagram
         integer response_minutes
         integer resolution_minutes
         timestamp_with_time_zone updated_at
+    }
+
+    SELF_HELP_FEEDBACK {
+        uuid id PK
+        uuid user_id FK
+        boolean helped "steps solved it without a ticket"
+        timestamp_with_time_zone created_at
     }
 
     IT_SERVICES ||--o{ INCIDENTS : "affected by"

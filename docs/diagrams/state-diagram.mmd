@@ -1,12 +1,17 @@
 stateDiagram-v2
     [*] --> REPORTED : Employee reports incident (initial state)
 
-    REPORTED --> ASSIGNED : Technician assigned (manual / strategy)
+    REPORTED --> ASSIGNED : Technician assigned (manual / strategy, capacity permitting)
     REPORTED --> CANCELLED : Reporter or Admin cancels ticket
 
-    ASSIGNED --> IN_PROGRESS : Technician starts diagnosis / work
-    ASSIGNED --> ASSIGNED : Technician or Admin reassigns
+    ASSIGNED --> ACKNOWLEDGED : Assignee acknowledges (meets response target)
+    ASSIGNED --> IN_PROGRESS : Technician starts work straight away (counts as acknowledging)
+    ASSIGNED --> ASSIGNED : Admin reassigns (or L2 escalation auto-reassigns)
     ASSIGNED --> CANCELLED : Admin cancels ticket
+
+    ACKNOWLEDGED --> IN_PROGRESS : Technician starts diagnosis / work
+    ACKNOWLEDGED --> ASSIGNED : Reassigned (new technician must accept it)
+    ACKNOWLEDGED --> CANCELLED : Admin cancels ticket
 
     state IN_PROGRESS {
         [*] --> Diagnosing
@@ -20,6 +25,12 @@ stateDiagram-v2
     IN_PROGRESS --> RESOLVED : Technician provides resolution summary
     IN_PROGRESS --> ASSIGNED : Reassigned to different tier / specialist
 
+    REPORTED --> RESOLVED : resolveWithParent (major incident resolved)
+    ASSIGNED --> RESOLVED : resolveWithParent (major incident resolved)
+    ACKNOWLEDGED --> RESOLVED : resolveWithParent (major incident resolved)
+    IN_PROGRESS --> RESOLVED : resolveWithParent (major incident resolved)
+    PENDING_INFO --> RESOLVED : resolveWithParent (resumes SLA clock first)
+
     RESOLVED --> CLOSED : Reporter verifies and accepts resolution
     RESOLVED --> IN_PROGRESS : Reporter rejects resolution (reopened within 48h)
     RESOLVED --> CLOSED : System auto-closes after 48h inactivity
@@ -32,11 +43,19 @@ stateDiagram-v2
         Resumes immediately upon user submission.
     end note
 
+    note right of ACKNOWLEDGED
+        Accepted but not started. respondedAt is set,
+        so the ticket no longer escalates for response.
+    end note
+
     note left of CLOSED
         FORBIDDEN TRANSITIONS:
         - CLOSED -> Any state (strictly immutable)
         - CANCELLED -> Any state (strictly immutable)
-        - REPORTED -> RESOLVED / CLOSED (must pass through IN_PROGRESS)
-        - ASSIGNED -> CLOSED (must be resolved first)
-        - PENDING_INFO -> RESOLVED (must return to IN_PROGRESS first)
+        - REPORTED -> RESOLVED / CLOSED (must pass through IN_PROGRESS,
+          except resolveWithParent for tickets linked to a major incident)
+        - ASSIGNED / ACKNOWLEDGED -> CLOSED (must be resolved first)
+        - PENDING_INFO -> RESOLVED (must return to IN_PROGRESS first,
+          except resolveWithParent)
+        - IN_PROGRESS / PENDING_INFO -> CANCELLED
     end note
