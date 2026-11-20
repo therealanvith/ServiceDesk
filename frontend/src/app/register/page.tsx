@@ -3,6 +3,7 @@
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useAuth } from "@/context/AuthContext";
 import { type AuthConfig, api } from "@/lib/apiClient";
+import { useCooldown } from "@/lib/useCooldown";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -18,6 +19,7 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<AuthConfig | null>(null);
+  const cooldown = useCooldown();
 
   useEffect(() => {
     if (user) router.replace("/");
@@ -38,6 +40,7 @@ export default function RegisterPage() {
       await loginWithGoogle(credential);
       router.replace("/");
     } catch (err: unknown) {
+      cooldown.trigger(err);
       setError(err instanceof Error ? err.message : "Couldn't sign up with Google");
     } finally {
       setSubmitting(false);
@@ -64,6 +67,7 @@ export default function RegisterPage() {
       });
       router.replace("/");
     } catch (err: unknown) {
+      cooldown.trigger(err);
       setError(err instanceof Error ? err.message : "Couldn't create the account");
     } finally {
       setSubmitting(false);
@@ -152,8 +156,16 @@ export default function RegisterPage() {
             onChange={(e) => setConfirm(e.target.value)}
           />
         </label>
-        <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-          {submitting ? "Creating account…" : "Create account"}
+        <button
+          type="submit"
+          className="btn btn-primary btn-block"
+          disabled={submitting || cooldown.coolingDown}
+        >
+          {submitting
+            ? "Creating account…"
+            : cooldown.coolingDown
+              ? `Try again in ${cooldown.secondsLeft} s`
+              : "Create account"}
         </button>
       </form>
 

@@ -5,7 +5,9 @@ const API_BASE_URL = (
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    /** From Retry-After when the server refuses with 429. */
+    public readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = "ApiError";
@@ -399,7 +401,12 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     ) {
       window.dispatchEvent(new Event("servicedesk:session-expired"));
     }
-    throw new ApiError(errorDetail || `Request failed (${response.status})`, response.status);
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    throw new ApiError(
+      errorDetail || `Request failed (${response.status})`,
+      response.status,
+      response.status === 429 && retryAfter > 0 ? retryAfter : undefined
+    );
   }
 
   if (response.status === 204) return undefined as T;

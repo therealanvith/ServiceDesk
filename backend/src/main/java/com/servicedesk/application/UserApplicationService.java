@@ -44,6 +44,7 @@ public class UserApplicationService {
   private final JwtTokenProvider jwtTokenProvider;
   private final GoogleIdTokenVerifier googleVerifier;
   private final List<NotificationChannel> notificationChannels;
+  private final LoginAttemptGuard loginAttempts;
   private final Clock clock;
   private boolean registrationEnabled = true;
 
@@ -101,7 +102,9 @@ public class UserApplicationService {
       JwtTokenProvider jwtTokenProvider,
       GoogleIdTokenVerifier googleVerifier,
       Clock clock,
-      List<NotificationChannel> notificationChannels) {
+      List<NotificationChannel> notificationChannels,
+      LoginAttemptGuard loginAttempts) {
+    this.loginAttempts = loginAttempts;
     this.notificationChannels = notificationChannels;
     this.userJpaRepository = userJpaRepository;
     this.incidentJpaRepository = incidentJpaRepository;
@@ -113,16 +116,19 @@ public class UserApplicationService {
 
   @Transactional(readOnly = true)
   public AuthResponse login(LoginRequest request) {
-    UserEntity user =
-        userJpaRepository
-            .findByUsername(request.username())
-            .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
-
-    if (!user.isActive()
-        || user.getPasswordHash() == null
-        || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+    // A locked username gets the same answer as a wrong password, so lockouts leak nothing.
+    if (loginAttempts.isLocked(request.username())) {
       throw new BadCredentialsException("Invalid username or password");
     }
+    UserEntity user = userJpaRepository.findByUsername(request.username()).orElse(null);
+    if (user == null
+        || !user.isActive()
+        || user.getPasswordHash() == null
+        || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+      loginAttempts.recordFailure(request.username());
+      throw new BadCredentialsException("Invalid username or password");
+    }
+    loginAttempts.recordSuccess(request.username());
     return issueSession(user);
   }
 
