@@ -15,7 +15,11 @@ public class ItManagerEscalationHandler extends EscalationHandler {
 
   @Override
   protected boolean applies(Incident incident, Instant now) {
-    Priority priority = incident.getPriority();
+    // The breach bumps P3 to P2; judge by the priority the ticket had when it breached.
+    Priority priority =
+        incident.getPriorityAtBreach() != null
+            ? incident.getPriorityAtBreach()
+            : incident.getPriority();
     return incident.getStatus().isActive()
         && incident.getSlaWindow() != null
         && incident.getSlaWindow().getStatus() == SlaStatus.BREACHED

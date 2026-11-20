@@ -15,6 +15,7 @@ import com.servicedesk.domain.notification.NotificationChannel;
 import com.servicedesk.domain.notification.NotificationMessage;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.UserId;
+import com.servicedesk.infrastructure.live.LiveEventBroadcaster;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserSkillEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
@@ -45,6 +46,7 @@ public class UserApplicationService {
   private final GoogleIdTokenVerifier googleVerifier;
   private final List<NotificationChannel> notificationChannels;
   private final LoginAttemptGuard loginAttempts;
+  private final LiveEventBroadcaster liveEvents;
   private final Clock clock;
   private boolean registrationEnabled = true;
 
@@ -103,7 +105,9 @@ public class UserApplicationService {
       GoogleIdTokenVerifier googleVerifier,
       Clock clock,
       List<NotificationChannel> notificationChannels,
-      LoginAttemptGuard loginAttempts) {
+      LoginAttemptGuard loginAttempts,
+      LiveEventBroadcaster liveEvents) {
+    this.liveEvents = liveEvents;
     this.loginAttempts = loginAttempts;
     this.notificationChannels = notificationChannels;
     this.userJpaRepository = userJpaRepository;
@@ -325,7 +329,12 @@ public class UserApplicationService {
     UserEntity user = loadManageableUser(userId, actorUsername);
     user.setActive(active);
     user.setUpdatedAt(clock.instant());
-    return toAccountResponse(userJpaRepository.save(user));
+    UserAccountResponse saved = toAccountResponse(userJpaRepository.save(user));
+    if (!active) {
+      // A deactivated account stops receiving live updates straight away.
+      liveEvents.disconnect(user.getId());
+    }
+    return saved;
   }
 
   private UserEntity loadManageableUser(UUID userId, String actorUsername) {

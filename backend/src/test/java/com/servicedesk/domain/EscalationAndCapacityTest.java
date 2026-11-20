@@ -144,6 +144,29 @@ class EscalationAndCapacityTest {
   }
 
   @Test
+  void aMediumTicketBumpedByItsBreachDoesNotReachTheItManager() {
+    Incident incident =
+        new IncidentFactory(new MatrixPriorityStrategy(), Clock.fixed(START, ZoneOffset.UTC))
+            .createIncident(
+                "Printer offline",
+                "One printer",
+                Category.HARDWARE,
+                Impact.MEDIUM,
+                Urgency.MEDIUM,
+                UserId.generate());
+    incident.assign(tech, tech);
+    incident.acknowledge(tech);
+    incident.markResponded(START.plusSeconds(60));
+    Instant breached = incident.getSlaWindow().getResolutionDeadline().plusSeconds(1);
+    incident.evaluateSla(Clock.fixed(breached, ZoneOffset.UTC));
+
+    // The breach bumped it to P2, but it was P3 when it breached.
+    assertThat(incident.getPriority()).isEqualTo(com.servicedesk.domain.priority.Priority.P2_HIGH);
+    assertThat(escalate(incident, breached)).isEmpty();
+    assertThat(escalate(incident, breached.plusSeconds(3600))).isEmpty();
+  }
+
+  @Test
   void capacityDecoratorSkipsTechniciansAtTheirLimit() {
     User full = technician("full", 5, 5);
     User busy = technician("busy", 3, 5);

@@ -136,6 +136,17 @@ class MajorIncidentTest {
   }
 
   @Test
+  void affectsMeTooOnALinkedTicketJoinsTheMainOne() throws Exception {
+    String main = report("alice", "");
+    String child = report("bob", "");
+    link(child, main, "boss", "ADMINISTRATOR").andExpect(status().isOk());
+
+    String mine = report("carol", ",\"relatedIncidentId\":\"" + child + "\"");
+    mvc.perform(get("/api/v1/incidents/" + mine).with(user("boss").roles("ADMINISTRATOR")))
+        .andExpect(jsonPath("$.parentIncident.id").value(main));
+  }
+
+  @Test
   void linksAreOneLevelDeep() throws Exception {
     String main = report("alice", "");
     String child = report("bob", "");

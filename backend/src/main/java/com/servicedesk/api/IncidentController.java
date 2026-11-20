@@ -20,6 +20,7 @@ import com.servicedesk.api.dto.MajorIncidentDtos.LinkIncidentRequest;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
+import com.servicedesk.api.dto.ReopenIncidentRequest;
 import com.servicedesk.api.dto.RequestInfoRequest;
 import com.servicedesk.api.dto.ResolveIncidentRequest;
 import com.servicedesk.api.dto.SimilarIncidentResponse;
@@ -222,6 +223,14 @@ public class IncidentController {
     IncidentDetailResponse response =
         incidentService.closeIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/{id}/reopen")
+  public ResponseEntity<IncidentDetailResponse> reopen(
+      @PathVariable UUID id,
+      @Valid @RequestBody ReopenIncidentRequest request,
+      Principal principal) {
+    return ResponseEntity.ok(incidentService.reopenIncident(id, request, principal.getName()));
   }
 
   @PostMapping("/{id}/cancel")

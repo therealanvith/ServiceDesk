@@ -87,8 +87,11 @@ public class BrevoEmailChannelAdapter implements NotificationChannel {
       return;
     }
     UserEntity recipient = users.findById(message.recipientId().getValue()).orElse(null);
-    if (recipient == null || recipient.getEmail() == null || recipient.getEmail().isBlank()) {
-      return; // no address on file
+    if (recipient == null
+        || !recipient.isActive()
+        || recipient.getEmail() == null
+        || recipient.getEmail().isBlank()) {
+      return; // deactivated, or no address on file
     }
     try {
       http.post()

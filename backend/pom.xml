@@ -127,7 +127,16 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-XX:+EnableDynamicAgentLoading -Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- Tests must never pick up a developer's .env (Bun loads it for the git hooks):
+                         system properties outrank environment variables, so pin what tests rely on.
+                         Empty keys keep Gemini, Brevo and Google sign-in off: no real calls or emails. -->
+                    <argLine>-XX:+EnableDynamicAgentLoading -Dnet.bytebuddy.experimental=true -Dapp.ai.gemini.api-key= -Dapp.mail.brevo.api-key= -Dapp.auth.google.client-id= -Dspring.datasource.password=</argLine>
+                    <systemPropertyVariables>
+                        <spring.datasource.url>jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL</spring.datasource.url>
+                        <spring.datasource.driver-class-name>org.h2.Driver</spring.datasource.driver-class-name>
+                        <spring.datasource.username>sa</spring.datasource.username>
+                        <spring.profiles.active>default</spring.profiles.active>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>

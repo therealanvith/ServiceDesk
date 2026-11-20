@@ -1,6 +1,9 @@
 package com.servicedesk.infrastructure.live;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -25,11 +28,32 @@ public class LiveEventBroadcaster {
   /** Streams end after this long; the browser reconnects, which also refreshes its token check. */
   private static final long STREAM_TIMEOUT_MS = 30 * 60 * 1000L;
 
+  /** Browser tabs one person may keep streaming at once. */
+  static final int MAX_STREAMS_PER_USER = 5;
+
   private final Map<UUID, Set<SseEmitter>> streams = new ConcurrentHashMap<>();
 
   public SseEmitter subscribe(UUID userId) {
     SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-    streams.computeIfAbsent(userId, id -> new CopyOnWriteArraySet<>()).add(emitter);
+    List<SseEmitter> evicted = new ArrayList<>();
+    // Add inside compute so a concurrent remove can't drop the map entry under us; keep at most
+    // MAX_STREAMS_PER_USER open per person, closing the oldest.
+    streams.compute(
+        userId,
+        (id, set) -> {
+          Set<SseEmitter> next = set != null ? set : new CopyOnWriteArraySet<>();
+          next.add(emitter);
+          Iterator<SseEmitter> oldest = next.iterator();
+          while (next.size() > MAX_STREAMS_PER_USER && oldest.hasNext()) {
+            SseEmitter old = oldest.next();
+            if (old != emitter) {
+              next.remove(old);
+              evicted.add(old);
+            }
+          }
+          return next;
+        });
+    evicted.forEach(SseEmitter::complete);
     Runnable remove = () -> remove(userId, emitter);
     emitter.onCompletion(remove);
     emitter.onTimeout(remove);
@@ -70,6 +94,14 @@ public class LiveEventBroadcaster {
             }
           }
         });
+  }
+
+  /** Ends every open stream of a user, e.g. when the account is deactivated. */
+  public void disconnect(UUID userId) {
+    Set<SseEmitter> userStreams = streams.remove(userId);
+    if (userStreams != null) {
+      userStreams.forEach(SseEmitter::complete);
+    }
   }
 
   public int openStreams() {

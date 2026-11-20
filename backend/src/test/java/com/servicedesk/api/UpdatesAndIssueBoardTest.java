@@ -125,6 +125,60 @@ class UpdatesAndIssueBoardTest {
   }
 
   @Test
+  void theReporterCanReopenAndPublicEntriesNeverNameThem() throws Exception {
+    String base = "/api/v1/incidents/" + ticketId;
+    mvc.perform(post(base + "/start").with(user("tech").roles("TECHNICIAN")))
+        .andExpect(status().isOk());
+    mvc.perform(
+            json(
+                post(base + "/resolve"),
+                "tech",
+                "TECHNICIAN",
+                "{\"resolutionSummary\":\"Reinstalled the VPN client\"}"))
+        .andExpect(status().isOk());
+
+    // Someone else can't reopen it; the reporter can, with a reason.
+    mvc.perform(json(post(base + "/reopen"), "other", "EMPLOYEE", "{\"reason\":\"x\"}"))
+        .andExpect(status().isNotFound());
+    mvc.perform(json(post(base + "/reopen"), "reporter", "EMPLOYEE", "{\"reason\":\" \"}"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(
+            json(
+                post(base + "/reopen"),
+                "reporter",
+                "EMPLOYEE",
+                "{\"reason\":\"Still drops every hour\"}"))
+        .andExpect(status().isOk())
+        .andExpect(
+            org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status")
+                .value("IN_PROGRESS"));
+
+    mvc.perform(
+            json(
+                post(base + "/resolve"),
+                "tech",
+                "TECHNICIAN",
+                "{\"resolutionSummary\":\"Replaced the router\"}"))
+        .andExpect(status().isOk());
+    mvc.perform(
+            json(
+                post(base + "/close"),
+                "reporter",
+                "EMPLOYEE",
+                "{\"rating\":2,\"remarks\":\"slow fix\"}"))
+        .andExpect(status().isOk());
+
+    String board =
+        mvc.perform(get("/api/v1/issues/" + ticketId).with(user("other").roles("EMPLOYEE")))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(board).contains("Reopened by the reporter").contains("The reporter confirmed");
+    assertThat(board).doesNotContain("Name reporter").doesNotContain("slow fix");
+  }
+
+  @Test
   void everyoneCanReadIssuesWithoutReporterIdentityOrInternalNotes() throws Exception {
     String base = "/api/v1/incidents/" + ticketId;
     mvc.perform(

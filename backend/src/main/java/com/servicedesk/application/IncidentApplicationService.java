@@ -15,6 +15,7 @@ import com.servicedesk.api.dto.MajorIncidentDtos.LinkedIncidentResponse;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
+import com.servicedesk.api.dto.ReopenIncidentRequest;
 import com.servicedesk.api.dto.RequestInfoRequest;
 import com.servicedesk.api.dto.ResolveIncidentRequest;
 import com.servicedesk.api.dto.ServiceResponse;
@@ -167,13 +168,24 @@ public class IncidentApplicationService {
             service != null ? service.getCriticality() : null);
 
     // "This affects me too": join the existing issue when it's still open and is a main ticket.
-    Incident related =
-        request.relatedIncidentId() == null
-            ? null
-            : incidentRepository
-                .findById(IncidentId.of(request.relatedIncidentId()))
-                .filter(r -> isOpen(r.getStatus()) && r.getParentIncidentId() == null)
-                .orElse(null);
+    Incident related = null;
+    if (request.relatedIncidentId() != null) {
+      related =
+          incidentRepository
+              .findById(IncidentId.of(request.relatedIncidentId()))
+              .orElseThrow(() -> new IllegalArgumentException("That issue no longer exists"));
+      // A linked ticket points at its main ticket: join that one.
+      if (related.getParentIncidentId() != null) {
+        related =
+            incidentRepository
+                .findById(related.getParentIncidentId())
+                .orElseThrow(() -> new IllegalArgumentException("That issue no longer exists"));
+      }
+      if (!isOpen(related.getStatus())) {
+        throw new IllegalArgumentException(
+            "That issue has already been fixed; report this as a new problem instead");
+      }
+    }
     if (related != null) {
       incident.linkToParent(related.getId());
     }
@@ -607,6 +619,44 @@ public class IncidentApplicationService {
     }
   }
 
+  /** The reporter says the fix didn't work: the ticket goes back to the technician. */
+  public IncidentDetailResponse reopenIncident(
+      UUID incidentId, ReopenIncidentRequest request, String actorUsername) {
+    User actor = loadUser(actorUsername);
+    Incident incident = loadVisibleIncident(incidentId, actor);
+    requireReporterOrAdmin(incident, actor, "reopen this incident");
+
+    IncidentStatus oldStatus = incident.getStatus();
+    incident.reopen(actor.getId());
+    Incident saved = incidentRepository.save(incident);
+
+    recordStatusChange(
+        incident.getId(),
+        actor.getId(),
+        oldStatus,
+        incident.getStatus(),
+        "Reopened: " + request.reason());
+    postUpdate(
+        incident.getId(),
+        actor,
+        UpdateKind.STATUS,
+        (actor.getId().equals(incident.getReporterId())
+                ? "Reopened by the reporter: "
+                : "Reopened by " + actor.getFullName() + ": ")
+            + request.reason());
+    if (incident.getAssigneeId() != null) {
+      notifyChannels(
+          NotificationMessage.of(
+              incident.getAssigneeId(),
+              incident.getId(),
+              "REOPENED",
+              "Reopened: " + incident.getIncidentNumber(),
+              "The fix didn't work: " + request.reason()));
+    }
+    broadcastChange(saved);
+    return toDetailResponse(saved);
+  }
+
   public IncidentDetailResponse closeIncident(
       UUID incidentId, CloseIncidentRequest request, String actorUsername) {
     User actor = loadUser(actorUsername);
@@ -630,18 +680,14 @@ public class IncidentApplicationService {
       remarks = remarks + " (rated " + request.rating() + "/5)";
     }
     recordStatusChange(incident.getId(), actor.getId(), oldStatus, incident.getStatus(), remarks);
+    // Public entry: no reporter name, rating or remarks (those stay in the audit trail).
     postUpdate(
         incident.getId(),
         actor,
         UpdateKind.STATUS,
-        "Closed by "
-            + actor.getFullName()
-            + (request != null && request.rating() != null
-                ? " (rated " + request.rating() + "/5)"
-                : "")
-            + (request != null && request.remarks() != null && !request.remarks().isBlank()
-                ? ": " + request.remarks()
-                : "."));
+        actor.getId().equals(incident.getReporterId())
+            ? "The reporter confirmed the fix and closed the ticket."
+            : "Closed by " + actor.getFullName() + ".");
 
     if (incident.getAssigneeId() != null) {
       notifyChannels(
@@ -683,7 +729,10 @@ public class IncidentApplicationService {
         incident.getId(),
         actor,
         UpdateKind.STATUS,
-        "Cancelled by " + actor.getFullName() + ": " + request.reason());
+        (actor.getId().equals(incident.getReporterId())
+                ? "Cancelled by the reporter: "
+                : "Cancelled by " + actor.getFullName() + ": ")
+            + request.reason());
     broadcastChange(saved);
     return toDetailResponse(saved);
   }

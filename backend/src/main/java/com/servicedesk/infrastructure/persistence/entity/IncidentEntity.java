@@ -108,6 +108,18 @@ public class IncidentEntity {
   @Column(name = "parent_incident_id")
   private UUID parentIncidentId;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "priority_at_breach", length = 20)
+  private Priority priorityAtBreach;
+
+  public Priority getPriorityAtBreach() {
+    return priorityAtBreach;
+  }
+
+  public void setPriorityAtBreach(Priority priorityAtBreach) {
+    this.priorityAtBreach = priorityAtBreach;
+  }
+
   public UUID getParentIncidentId() {
     return parentIncidentId;
   }

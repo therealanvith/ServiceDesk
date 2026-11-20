@@ -66,6 +66,23 @@ class RateLimitingTest {
   }
 
   @Test
+  void aPercentEncodedPathStillCountsAsSignIn() throws Exception {
+    for (int i = 0; i < 10; i++) {
+      mvc.perform(login("10.0.3.1", "enc" + i, "wrong")).andExpect(status().isUnauthorized());
+    }
+    mvc.perform(
+            post(java.net.URI.create("/api/v1/auth/logi%6E"))
+                .with(
+                    request -> {
+                      request.setRemoteAddr("10.0.3.1");
+                      return request;
+                    })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"enc\",\"password\":\"wrong\"}"))
+        .andExpect(status().isTooManyRequests());
+  }
+
+  @Test
   void aForgedForwardedForHeaderDoesNotResetTheLimit() throws Exception {
     for (int i = 0; i < 10; i++) {
       mvc.perform(login("10.0.1.1", "x" + i, "wrong").header("X-Forwarded-For", "203.0.113." + i))

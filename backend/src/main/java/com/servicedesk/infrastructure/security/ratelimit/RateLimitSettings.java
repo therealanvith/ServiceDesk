@@ -13,6 +13,7 @@ public class RateLimitSettings {
   private final RateLimitPolicy ai;
   private final RateLimitPolicy write;
   private final RateLimitPolicy api;
+  private final RateLimitPolicy events;
 
   public RateLimitSettings(
       @Value("${app.rate-limit.enabled:true}") boolean enabled,
@@ -20,13 +21,15 @@ public class RateLimitSettings {
       @Value("${app.rate-limit.auth-per-minute:10}") int authPerMinute,
       @Value("${app.rate-limit.ai-per-minute:20}") int aiPerMinute,
       @Value("${app.rate-limit.write-per-minute:120}") int writePerMinute,
-      @Value("${app.rate-limit.api-per-minute:600}") int apiPerMinute) {
+      @Value("${app.rate-limit.api-per-minute:600}") int apiPerMinute,
+      @Value("${app.rate-limit.events-per-minute:30}") int eventsPerMinute) {
     this.enabled = enabled;
     this.trustForwardedFor = trustForwardedFor;
     this.auth = RateLimitPolicy.perMinute("auth", authPerMinute);
     this.ai = RateLimitPolicy.perMinute("ai", aiPerMinute);
     this.write = RateLimitPolicy.perMinute("write", writePerMinute);
     this.api = RateLimitPolicy.perMinute("api", apiPerMinute);
+    this.events = RateLimitPolicy.perMinute("events", eventsPerMinute);
   }
 
   public boolean enabled() {
@@ -44,6 +47,10 @@ public class RateLimitSettings {
             || path.equals("/api/v1/auth/google")
             || path.equals("/api/v1/auth/register"))) {
       return auth;
+    }
+    // Opening a live stream is cheap to ask for but holds a connection: limit how often.
+    if (path.equals("/api/v1/events")) {
+      return events;
     }
     if (isAssistant(path)) {
       return ai;

@@ -39,6 +39,7 @@ public class Incident {
   private Instant escalatedAt;
   private EscalationLevel escalationLevel = EscalationLevel.NONE;
   private IncidentId parentIncidentId;
+  private Priority priorityAtBreach;
   private Integer feedbackRating;
   private String feedbackComment;
   private Clock clock;
@@ -87,6 +88,15 @@ public class Incident {
   public void resolveWithParent(String resolutionSummary) {
     this.currentState.resolveWithParent(this, resolutionSummary);
     this.updatedAt = getCurrentClockTime();
+  }
+
+  /** Priority when the resolution target was first missed (before the automatic bump), or null. */
+  public Priority getPriorityAtBreach() {
+    return priorityAtBreach;
+  }
+
+  public void restorePriorityAtBreach(Priority priority) {
+    this.priorityAtBreach = priority;
   }
 
   /** The major incident this ticket is part of, or null. */
@@ -170,10 +180,11 @@ public class Incident {
 
     SlaStatus previous = this.slaWindow.getStatus();
     SlaStatus evaluated = this.slaWindow.checkBreach(now, warningWindow());
-    if (previous != SlaStatus.BREACHED
-        && evaluated == SlaStatus.BREACHED
-        && this.priority != Priority.P1_CRITICAL) {
-      this.priority = this.priority.escalate();
+    if (previous != SlaStatus.BREACHED && evaluated == SlaStatus.BREACHED) {
+      this.priorityAtBreach = this.priority;
+      if (this.priority != Priority.P1_CRITICAL) {
+        this.priority = this.priority.escalate();
+      }
     }
     this.updatedAt = now;
     return evaluated;

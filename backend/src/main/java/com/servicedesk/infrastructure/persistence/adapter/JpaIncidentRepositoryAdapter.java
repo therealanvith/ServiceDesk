@@ -188,6 +188,7 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     incident.setAffectedServiceId(entity.getServiceId());
     incident.setRespondedAt(entity.getRespondedAt());
     incident.setEscalatedAt(entity.getEscalatedAt());
+    incident.restorePriorityAtBreach(entity.getPriorityAtBreach());
     incident.restoreParent(
         entity.getParentIncidentId() == null ? null : IncidentId.of(entity.getParentIncidentId()));
     incident.escalateTo(
@@ -243,6 +244,7 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     entity.setServiceId(incident.getAffectedServiceId());
     entity.setRespondedAt(incident.getRespondedAt());
     entity.setEscalatedAt(incident.getEscalatedAt());
+    entity.setPriorityAtBreach(incident.getPriorityAtBreach());
     entity.setParentIncidentId(
         incident.getParentIncidentId() == null ? null : incident.getParentIncidentId().getValue());
     entity.setEscalationLevel(incident.getEscalationLevel());

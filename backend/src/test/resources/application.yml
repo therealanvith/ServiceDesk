@@ -25,6 +25,7 @@ app:
     ai-per-minute: 10000
     write-per-minute: 10000
     api-per-minute: 10000
+    events-per-minute: 10000
     login:
       max-failures: 1000
   security:

@@ -16,6 +16,7 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.UrlPathHelper;
 
 /**
  * Throttles the API by named policy: sign-in by client address, the AI assistant and writes by
@@ -41,19 +42,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    String path = request.getRequestURI();
+    String path = path(request);
     return !settings.enabled()
         || "OPTIONS".equals(request.getMethod())
         || path.equals("/api/v1/health")
-        || path.startsWith("/actuator/health")
-        || path.equals("/api/v1/events");
+        || path.startsWith("/actuator/health");
+  }
+
+  /**
+   * The decoded path Spring routes on. The raw URI would let "/api/v1/auth/logi%6E" reach the login
+   * endpoint while dodging the sign-in policy.
+   */
+  private static String path(HttpServletRequest request) {
+    return UrlPathHelper.defaultInstance.getPathWithinApplication(request);
   }
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
-    RateLimitPolicy policy = settings.policyFor(request.getMethod(), request.getRequestURI());
+    RateLimitPolicy policy = settings.policyFor(request.getMethod(), path(request));
     String clientIp = clientIp(request);
     String user = signedInUser();
     String key = policy.name().equals("auth") || user == null ? "ip:" + clientIp : "user:" + user;
@@ -89,7 +97,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     if (settings.trustForwardedFor()) {
       String forwarded = request.getHeader("X-Forwarded-For");
       if (forwarded != null && !forwarded.isBlank()) {
-        return forwarded.split(",")[0].trim();
+        // The rightmost hop was added by our proxy; anything left of it came from the client.
+        String[] hops = forwarded.split(",");
+        return hops[hops.length - 1].trim();
       }
     }
     return request.getRemoteAddr();
