@@ -176,6 +176,25 @@ class UpdatesAndIssueBoardTest {
             .getContentAsString();
     assertThat(board).contains("Reopened by the reporter").contains("The reporter confirmed");
     assertThat(board).doesNotContain("Name reporter").doesNotContain("slow fix");
+
+    mvc.perform(json(post(base + "/reopen"), "other", "EMPLOYEE", "{\"reason\":\"x\"}"))
+        .andExpect(status().isNotFound());
+    JsonNode reopened =
+        json(
+            mvc.perform(
+                    json(
+                        post(base + "/reopen"),
+                        "reporter",
+                        "EMPLOYEE",
+                        "{\"reason\":\"The connection dropped again\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+    assertThat(reopened.get("status").asText()).isEqualTo("IN_PROGRESS");
+    assertThat(reopened.get("closedAt").isNull()).isTrue();
+    assertThat(reopened.get("resolvedAt").isNull()).isTrue();
+    assertThat(reopened.get("feedbackRating").isNull()).isTrue();
   }
 
   @Test

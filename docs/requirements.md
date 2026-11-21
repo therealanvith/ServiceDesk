@@ -192,7 +192,8 @@ Defaults below; administrators can change them per priority in Settings (new tic
   - Technicians mark tickets as `RESOLVED` with mandatory resolution notes and root-cause classification.
   - The employee confirms resolution to move it to `CLOSED`. If unconfirmed after 48 hours, the system auto-closes it.
 - **Strict Invariants & Forbidden Transitions**:
-  - `CLOSED` and `CANCELLED` are terminal states; no further transitions are allowed.
+  - The reporter or an administrator can reopen a `RESOLVED` ticket, or a `CLOSED` ticket up to and including 14 days after closure, with a required reason. It returns to `IN_PROGRESS`; resolution, closure and feedback fields are cleared.
+  - `CANCELLED` rejects all transitions. `CLOSED` rejects transitions other than reopening within that window.
   - An incident cannot transition directly from `REPORTED` to `RESOLVED` or `CLOSED` without passing through `IN_PROGRESS`; the only exception is resolving together with its major incident.
   - Reassignment is prohibited once an incident is `RESOLVED` or `CLOSED`.
 

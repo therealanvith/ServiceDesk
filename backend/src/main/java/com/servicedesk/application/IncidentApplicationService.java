@@ -1302,7 +1302,9 @@ public class IncidentApplicationService {
                 .orElse(null),
         incidentRepository.findChildren(incident.getId()).stream()
             .map(IncidentApplicationService::toLinked)
-            .toList());
+            .toList(),
+        incident.getResolvedAt(),
+        incident.getClosedAt());
   }
 
   private static LinkedIncidentResponse toLinked(Incident incident) {

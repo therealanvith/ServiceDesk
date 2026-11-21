@@ -36,4 +36,6 @@ public record IncidentDetailResponse(
     /** The major incident this ticket is part of, if any. */
     LinkedIncidentResponse parentIncident,
     /** Tickets linked under this one when it is a major incident. */
-    List<LinkedIncidentResponse> childIncidents) {}
+    List<LinkedIncidentResponse> childIncidents,
+    Instant resolvedAt,
+    Instant closedAt) {}

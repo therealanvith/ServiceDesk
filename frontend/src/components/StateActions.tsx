@@ -167,7 +167,7 @@ export function StateActions({
     status === "CLOSED" &&
     (isReporter || isAdmin) &&
     incident.closedAt &&
-    Date.now() - new Date(incident.closedAt).getTime() < REOPEN_WINDOW_MS
+    Date.now() - new Date(incident.closedAt).getTime() <= REOPEN_WINDOW_MS
   ) {
     secondary.push(btn("reopen", "It’s still not fixed", () => open("reopen")));
   }

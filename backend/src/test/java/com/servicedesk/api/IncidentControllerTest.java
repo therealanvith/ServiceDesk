@@ -98,7 +98,9 @@ class IncidentControllerTest {
             null,
             EscalationLevel.NONE,
             null,
-            java.util.List.of());
+            java.util.List.of(),
+            null,
+            null);
 
     when(incidentService.createIncident(any(CreateIncidentRequest.class), eq("emp")))
         .thenReturn(response);

@@ -43,7 +43,7 @@ Enforced strictly through the **GoF State Pattern** across eight distinct lifecy
 - **Lifecycle Guarantees**:
   - Direct or invalid transitions (e.g. `REPORTED` $\to$ `RESOLVED`) are programmatically forbidden and raise `InvalidStateTransitionException`.
   - Stored state in database is cleanly mapped back to domain state instances via factory mapping.
-  - Terminal states (`CLOSED`, `CANCELLED`) reject all subsequent modification attempts.
+  - `CANCELLED` rejects all transitions. Reporter/admin can reopen `RESOLVED` tickets or `CLOSED` tickets within 14 days with a reason, returning them to `IN_PROGRESS` and clearing resolution and feedback.
 
 ### 2.3 Intelligent Priority Calculation (Matrix Strategy)
 - Derives priority automatically from **Impact** (organizational scope: `LOW`, `MEDIUM`, `HIGH`) and **Urgency** (time criticality: `LOW`, `MEDIUM`, `HIGH`).

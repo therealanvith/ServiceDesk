@@ -32,10 +32,11 @@ stateDiagram-v2
     PENDING_INFO --> RESOLVED : resolveWithParent (resumes SLA clock first)
 
     RESOLVED --> CLOSED : Reporter verifies and accepts resolution
-    RESOLVED --> IN_PROGRESS : Reporter rejects resolution (reopened within 48h)
+    RESOLVED --> IN_PROGRESS : Reporter or Admin rejects resolution (reason required)
     RESOLVED --> CLOSED : System auto-closes after 48h inactivity
 
-    CLOSED --> [*] : Terminal state (immutable)
+    CLOSED --> IN_PROGRESS : Reporter or Admin reopens within 14 days (reason required)
+    CLOSED --> [*] : Reopen window expired
     CANCELLED --> [*] : Terminal state (immutable)
 
     note right of PENDING_INFO
@@ -50,7 +51,7 @@ stateDiagram-v2
 
     note left of CLOSED
         FORBIDDEN TRANSITIONS:
-        - CLOSED -> Any state (strictly immutable)
+        - CLOSED -> Any state except IN_PROGRESS within 14 days
         - CANCELLED -> Any state (strictly immutable)
         - REPORTED -> RESOLVED / CLOSED (must pass through IN_PROGRESS,
           except resolveWithParent for tickets linked to a major incident)
