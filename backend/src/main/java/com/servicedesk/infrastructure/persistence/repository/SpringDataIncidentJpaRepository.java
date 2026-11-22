@@ -23,4 +23,6 @@ public interface SpringDataIncidentJpaRepository
   int countByAssigneeIdAndStatusNotIn(UUID assigneeId, Collection<IncidentStatus> statuses);
 
   List<IncidentEntity> findByStatusIn(Collection<IncidentStatus> statuses);
+
+  List<IncidentEntity> findByParentIncidentId(UUID parentIncidentId);
 }

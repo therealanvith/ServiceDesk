@@ -23,6 +23,11 @@ public class ReportedState implements IncidentState {
   }
 
   @Override
+  public void resolveWithParent(Incident context, String resolutionSummary) {
+    ParentResolution.apply(context, resolutionSummary);
+  }
+
+  @Override
   public IncidentStatus getStatus() {
     return IncidentStatus.REPORTED;
   }

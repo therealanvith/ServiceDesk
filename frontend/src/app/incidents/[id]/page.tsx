@@ -1,15 +1,27 @@
 "use client";
 
+import { AssistantPanel } from "@/components/AssistantPanel";
 import { AuditTimeline } from "@/components/AuditTimeline";
-import { CommentThread } from "@/components/CommentThread";
+import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
+import { QuickFix } from "@/components/QuickFix";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
+import { SkeletonBlock } from "@/components/Skeleton";
 import { SlaBadge } from "@/components/SlaBadge";
 import { StateActions } from "@/components/StateActions";
 import { StatusBadge } from "@/components/StatusBadge";
+import { UpdatesThread } from "@/components/UpdatesThread";
 import { useAuth } from "@/context/AuthContext";
 import { type AuditLogItem, type CommentItem, type IncidentDetail, api } from "@/lib/apiClient";
-import { CATEGORY_LABELS, CRITICALITY_LABELS, formatDateTime, timeAgo } from "@/lib/labels";
+import {
+  CATEGORY_LABELS,
+  CRITICALITY_LABELS,
+  ESCALATION_LABELS,
+  formatDateTime,
+  isAdmin,
+  timeAgo,
+} from "@/lib/labels";
+import { useLiveEvent } from "@/lib/liveEvents";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,6 +41,11 @@ export default function IncidentDetailPage() {
   const [commentsFailed, setCommentsFailed] = useState(false);
   const [auditFailed, setAuditFailed] = useState(false);
   const panelVersion = useRef(0);
+  const [dialogRequest, setDialogRequest] = useState<
+    { id: number; kind: "provideInfo" | "resolve"; text?: string } | undefined
+  >();
+  const requestDialog = (kind: "provideInfo" | "resolve", text?: string) =>
+    setDialogRequest((prev) => ({ id: (prev?.id ?? 0) + 1, kind, text }));
 
   // Comments and history load separately from the ticket, so one failing never hides the other,
   // and after an action the confirmed ticket stays on screen while these refresh.
@@ -45,6 +62,47 @@ export default function IncidentDetailPage() {
     if (cRes.status === "fulfilled") setComments(cRes.value);
     if (aRes.status === "fulfilled") setAuditLogs(aRes.value);
   }, [incidentId, user]);
+
+  // Shows the latest state without blanking the page.
+  const refresh = useCallback(() => {
+    api
+      .getIncident(incidentId)
+      .then((inc) => {
+        setIncident(inc);
+        return loadPanels();
+      })
+      .catch(() => {});
+  }, [incidentId, loadPanels]);
+
+  // Someone else changed this ticket, or a ticket linked under it (its list shows their status).
+  useLiveEvent((e) => {
+    if (e.event !== "incident-updated" || !incident) return;
+    const { incidentId: changed } = e.data;
+    if (
+      changed === incidentId ||
+      changed === incident.parentIncident?.id ||
+      incident.childIncidents.some((c) => c.id === changed)
+    ) {
+      refresh();
+    }
+  });
+
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  const unlink = async () => {
+    setUnlinking(true);
+    setUnlinkError(null);
+    try {
+      const updated = await api.unlinkIncident(incidentId);
+      setIncident(updated);
+      loadPanels();
+      showToast({ title: "Ticket unlinked", tone: "success" });
+    } catch (err: unknown) {
+      setUnlinkError(err instanceof Error ? err.message : "Couldn’t unlink this ticket");
+    } finally {
+      setUnlinking(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -86,7 +144,7 @@ export default function IncidentDetailPage() {
   }
 
   if (loading) {
-    return <output className="empty">Loading ticket…</output>;
+    return <SkeletonBlock label="Loading ticket…" variant="detail" />;
   }
 
   if (error || !incident) {
@@ -105,6 +163,8 @@ export default function IncidentDetailPage() {
   const currentUserRole = user?.role ?? "EMPLOYEE";
   const isPaused = incident.status === "PENDING_INFO";
   const sla = incident.slaWindow;
+  const parent = incident.parentIncident;
+  const children = incident.childIncidents ?? [];
 
   return (
     <>
@@ -113,7 +173,10 @@ export default function IncidentDetailPage() {
         <span aria-hidden="true">/</span>
         <span className="mono">{incident.incidentNumber}</span>
       </nav>
-      <h1 className="detail-title">{incident.title}</h1>
+      <div className="detail-title-row">
+        <h1 className="detail-title">{incident.title}</h1>
+        {children.length > 0 && <span className="tag tag-major">Major incident</span>}
+      </div>
       <p className="detail-sub">
         Opened by {incident.reporter.fullName}{" "}
         <time dateTime={incident.createdAt} title={new Date(incident.createdAt).toLocaleString()}>
@@ -123,6 +186,41 @@ export default function IncidentDetailPage() {
 
       <div className="detail">
         <div className="stack">
+          {parent && (
+            <div className="callout callout-neutral linked-parent">
+              <p>
+                Part of{" "}
+                {/* Only administrators can open other people's tickets; others see it read-only. */}
+                {isAdmin(currentUserRole) ? (
+                  <Link href={`/incidents/${parent.id}`} className="link mono">
+                    {parent.incidentNumber}
+                  </Link>
+                ) : (
+                  <span className="mono">{parent.incidentNumber}</span>
+                )}
+                : {parent.title} <StatusBadge status={parent.status} />
+                {!isAdmin(currentUserRole) && (
+                  <>
+                    {" "}
+                    <Link href="/issues" className="link">
+                      Follow it on All issues
+                    </Link>
+                  </>
+                )}
+              </p>
+              {isAdmin(currentUserRole) && (
+                <button type="button" className="btn btn-sm" disabled={unlinking} onClick={unlink}>
+                  {unlinking ? "Unlinking…" : "Unlink"}
+                </button>
+              )}
+              {unlinkError && (
+                <p className="field-hint text-red" role="alert">
+                  {unlinkError}
+                </p>
+              )}
+            </div>
+          )}
+
           <section className="card card-body stack" aria-label="Description">
             <p className="description">{incident.description}</p>
             {incident.resolutionNotes && (
@@ -141,15 +239,71 @@ export default function IncidentDetailPage() {
             )}
           </section>
 
-          {currentUserRole !== "EMPLOYEE" && <SimilarIncidentsPanel incidentId={incident.id} />}
+          {children.length > 0 && (
+            <section className="card" aria-labelledby="linked-title">
+              <div className="card-header">
+                <h2 id="linked-title">Linked tickets ({children.length})</h2>
+                <span className="hint">Resolved together with this one</span>
+              </div>
+              <ul className="similar-list">
+                {children.map((child) => (
+                  <li key={child.id} className="similar-item">
+                    <div className="similar-head">
+                      {isAdmin(currentUserRole) ? (
+                        <Link href={`/incidents/${child.id}`} className="mono link">
+                          {child.incidentNumber}
+                        </Link>
+                      ) : (
+                        <span className="mono">{child.incidentNumber}</span>
+                      )}
+                      <span className="title">{child.title}</span>
+                      <StatusBadge status={child.status} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {currentUserRole !== "EMPLOYEE" && (
+            <SimilarIncidentsPanel
+              incidentId={incident.id}
+              canLink={
+                isAdmin(currentUserRole) &&
+                !parent &&
+                children.length === 0 &&
+                !["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status)
+              }
+              onLinked={refresh}
+            />
+          )}
+          {currentUserRole === "EMPLOYEE" &&
+            isReporter &&
+            !["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status) && (
+              <QuickFix incidentId={incident.id} />
+            )}
+          {currentUserRole !== "EMPLOYEE" && (
+            <AssistantPanel
+              incidentId={incident.id}
+              canSuggestFix={!["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status)}
+              onUseAsResolution={
+                incident.status === "IN_PROGRESS" &&
+                (isAdmin(currentUserRole) || incident.assignee?.id === user?.id)
+                  ? (text) => requestDialog("resolve", text)
+                  : undefined
+              }
+            />
+          )}
 
           {commentsFailed ? (
-            <PanelError title="Comments" onRetry={loadPanels} />
+            <PanelError title="Updates" onRetry={loadPanels} />
           ) : (
-            <CommentThread
+            <UpdatesThread
               incidentId={incident.id}
               initialComments={comments}
               currentUserRole={currentUserRole}
+              status={incident.status}
+              onReply={isReporter ? () => requestDialog("provideInfo") : undefined}
             />
           )}
 
@@ -174,21 +328,44 @@ export default function IncidentDetailPage() {
               </dd>
               <dt>SLA</dt>
               <dd>
-                <SlaBadge status={sla?.slaStatus ?? null} isPaused={isPaused} />
+                <SlaBadge
+                  status={incident.status === "CANCELLED" ? null : (sla?.slaStatus ?? null)}
+                  isPaused={isPaused}
+                  finished={incident.status === "RESOLVED" || incident.status === "CLOSED"}
+                />
                 {sla && sla.pausedSeconds > 0 && (
                   <span className="props-sub">
-                    Paused {Math.round(sla.pausedSeconds / 60)} min so far
+                    Paused {Math.round(sla.pausedSeconds / 60)} min
+                    {incident.resolvedAt ? " in total" : " so far"}
                   </span>
                 )}
               </dd>
-              <dt>Due</dt>
-              <dd>
-                {sla?.resolutionDeadline ? (
-                  formatDateTime(sla.resolutionDeadline)
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </dd>
+              {incident.resolvedAt ? (
+                <>
+                  <dt>Resolved</dt>
+                  <dd>
+                    {formatDateTime(incident.resolvedAt)}
+                    {sla?.resolutionDeadline && (
+                      <span className="props-sub">
+                        {new Date(incident.resolvedAt) <= new Date(sla.resolutionDeadline)
+                          ? "Within target"
+                          : "After target"}
+                      </span>
+                    )}
+                  </dd>
+                </>
+              ) : (
+                <>
+                  <dt>Due</dt>
+                  <dd>
+                    {sla?.resolutionDeadline ? (
+                      formatDateTime(sla.resolutionDeadline)
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </dd>
+                </>
+              )}
               <dt>Response</dt>
               <dd>
                 {incident.respondedAt ? (
@@ -212,7 +389,10 @@ export default function IncidentDetailPage() {
                 )}
                 {incident.escalatedAt && (
                   <span className="props-sub text-red">
-                    Escalated {formatDateTime(incident.escalatedAt)}
+                    {incident.escalationLevel !== "NONE"
+                      ? ESCALATION_LABELS[incident.escalationLevel]
+                      : "Escalated"}{" "}
+                    {formatDateTime(incident.escalatedAt)}
                   </span>
                 )}
               </dd>
@@ -251,6 +431,8 @@ export default function IncidentDetailPage() {
             currentUserRole={currentUserRole}
             isReporter={isReporter}
             isAssignee={Boolean(user && incident.assignee?.id === user.id)}
+            isTeamLead={Boolean(user?.teamLead)}
+            dialogRequest={dialogRequest}
             onUpdate={(updated) => {
               // The action succeeded: show the confirmed ticket and refresh only the panels.
               setIncident(updated);

@@ -25,7 +25,13 @@ import org.springframework.stereotype.Component;
 public class GoogleIdTokenVerifier {
 
   /** Identity extracted from a verified Google ID token. */
-  public record GoogleIdentity(String subject, String email, String name) {}
+  /** {@code picture} is Google's profile picture URL, or null when absent or not Google-hosted. */
+  public record GoogleIdentity(String subject, String email, String name, String picture) {
+
+    public GoogleIdentity(String subject, String email, String name) {
+      this(subject, email, name, null);
+    }
+  }
 
   private static final String JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
   private static final Set<String> ISSUERS =
@@ -78,7 +84,14 @@ public class GoogleIdTokenVerifier {
       }
     }
     String name = jwt.getClaimAsString("name");
-    return new GoogleIdentity(jwt.getSubject(), email.toLowerCase(), name);
+    String picture = jwt.getClaimAsString("picture");
+    // Only Google's own image host is trusted, so the stored URL can't point somewhere else.
+    if (picture == null
+        || !picture.startsWith("https://")
+        || !picture.matches("^https://[a-z0-9-]+\\.googleusercontent\\.com/[^\\s\"'<>]{1,500}$")) {
+      picture = null;
+    }
+    return new GoogleIdentity(jwt.getSubject(), email.toLowerCase(), name, picture);
   }
 
   private JwtDecoder decoder() {

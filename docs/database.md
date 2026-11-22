@@ -36,7 +36,7 @@ Central table representing reported issues, status, SLA tracking, and assignment
 - `title` (`VARCHAR(200)`, NOT NULL): Incident summary.
 - `description` (`TEXT`, NOT NULL): Diagnostic details.
 - `category` (`VARCHAR(50)`, NOT NULL): `'NETWORK', 'HARDWARE', 'SOFTWARE', 'ACCESS'`.
-- `status` (`VARCHAR(30)`, NOT NULL): State pattern status (`'REPORTED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED', 'CANCELLED'`).
+- `status` (`VARCHAR(30)`, NOT NULL): State pattern status (`'REPORTED', 'ASSIGNED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'PENDING_INFO', 'RESOLVED', 'CLOSED', 'CANCELLED'`; `ACKNOWLEDGED` added in V15).
 - `priority` (`VARCHAR(30)`, NOT NULL): Calculated priority (`'P1_CRITICAL', 'P2_HIGH', 'P3_MEDIUM', 'P4_LOW'`).
 - `impact` (`VARCHAR(30)`, NOT NULL): `'HIGH', 'MEDIUM', 'LOW'`.
 - `urgency` (`VARCHAR(30)`, NOT NULL): `'HIGH', 'MEDIUM', 'LOW'`.
@@ -60,6 +60,7 @@ Discussion and diagnostic thread entries.
 - `author_id` (`UUID`, FK -> `users(id)`, NOT NULL).
 - `comment_text` (`TEXT`, NOT NULL).
 - `is_internal` (`BOOLEAN`, NOT NULL, default `false`): Internal technician-only notes.
+- `kind` (`VARCHAR(20)`, NOT NULL, default `'COMMENT'`, V14): What the entry in the Updates thread is. CHECK `chk_comment_kind`: `'COMMENT'` (typed by a person), `'QUESTION'` (request for info), `'ANSWER'` (reporter's reply), `'PICKUP'` (acknowledged or started), `'RESOLUTION'` (the fix), `'STATUS'` (closed, cancelled, linked and similar). Only `COMMENT` rows are typed by people; the others are written by the lifecycle actions.
 - `created_at` (`TIMESTAMPTZ`, NOT NULL, default `now()`).
 
 ### 2.5 `incident_audit_logs`
@@ -67,7 +68,7 @@ Append-only historical ledger capturing all mutations.
 - `id` (`UUID`, PK).
 - `incident_id` (`UUID`, FK -> `incidents(id)` ON DELETE CASCADE, NOT NULL).
 - `actor_id` (`UUID`, FK -> `users(id)`, NULLABLE): User ID or NULL for system daemon.
-- `action` (`VARCHAR(50)`, NOT NULL): Action identifier (`'CREATED', 'STATUS_CHANGED', 'ASSIGNED', 'PRIORITY_OVERRIDDEN', 'SLA_BREACHED'`).
+- `action` (`VARCHAR(50)`, NOT NULL): Action identifier (`'CREATED', 'STATUS_CHANGED', 'ASSIGNED', 'PRIORITY_OVERRIDDEN', 'SLA_BREACHED', 'ESCALATED', 'COMMENTED', 'LINKED', 'UNLINKED'`). For `ESCALATED`, `old_value` / `new_value` hold the previous and new escalation level; for `LINKED` / `UNLINKED`, the main ticket's number.
 - `old_value` (`VARCHAR(100)`, NULLABLE).
 - `new_value` (`VARCHAR(100)`, NULLABLE).
 - `remarks` (`TEXT`, NULLABLE).
@@ -114,6 +115,55 @@ Administrator-editable targets, one row per priority.
 - `users.password_hash` is nullable (Google-only accounts); `users.email` is nullable; `users.google_sub` holds the stable Google account id (unique when present).
 - `users.role` also allows `ROOT`; a partial unique index (`WHERE role = 'ROOT'`) guarantees a single root account.
 - Categories now include `DATABASE`, `CLOUD`, `SECURITY`, `APPLICATION` and `STORAGE` (CHECK constraints on `incidents.category` and `user_skills.category`).
+- `users.must_change_password` (BOOLEAN, default `false`, V13): set for accounts an administrator creates with a temporary password; the API refuses other requests until it is changed.
+- `incident_comments.kind` (V14): see 2.4.
+- `incidents.escalation_level` (VARCHAR(20), NOT NULL, default `'NONE'`, V15): `NONE`, `TEAM_LEAD`, `ADMINISTRATOR` or `IT_MANAGER` (CHECK `chk_incident_escalation_level`). Tickets escalated under the old single-step rule (`escalated_at` set) were migrated to `ADMINISTRATOR`.
+- `users.max_active_tickets` (INT, NOT NULL, default 5, CHECK 1–50, V15): a technician's open-ticket limit, respected by automatic and manual assignment. Open means not `RESOLVED`, `CLOSED` or `CANCELLED`.
+- `users.is_team_lead` (BOOLEAN, NOT NULL, default `false`, V15): receives first-level escalations. The seeded `tech_lead` account is set to `true`.
+- `incidents.parent_incident_id` (UUID, FK → `incidents(id)` ON DELETE SET NULL, nullable, V17): the major incident a ticket is linked under. CHECK `chk_incident_not_own_parent` stops self-links; index `idx_incidents_parent` serves "linked tickets" lookups. The application keeps links one level deep.
+
+### 2.10 `self_help_feedback` (V16)
+Whether the assistant's "Try this first" steps solved a problem without a ticket being filed. Feeds the self-help deflection figure in the trends report.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key |
+| `user_id` | UUID | FK → `users(id)` ON DELETE CASCADE, NOT NULL |
+| `helped` | BOOLEAN | NOT NULL |
+| `created_at` | TIMESTAMPTZ | NOT NULL, default `CURRENT_TIMESTAMP`; indexed (`idx_self_help_feedback_time`) for time-window reports |
+
+### 2.11 `incident_affected` (V19)
+People who said "this affects me too" on an open issue instead of filing a duplicate. Counted with the reporter and any linked tickets to give the number of affected users, which feeds the priority.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `incident_id` | UUID | FK → `incidents(id)` ON DELETE CASCADE; part of the primary key |
+| `user_id` | UUID | FK → `users(id)` ON DELETE CASCADE; part of the primary key (one row per person per issue) |
+| `created_at` | TIMESTAMPTZ | NOT NULL; indexed by `user_id` (`idx_incident_affected_user`) |
+
+### 2.12 `ai_advice_cache` (V21)
+Quick fixes and ticket summaries already written by the language model, so the same question is not asked twice. Only Gemini answers are stored.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `cache_key` | VARCHAR(64) | Primary key: SHA-256 of the kind, ticket id (when per-ticket) and the normalised text |
+| `kind` | VARCHAR(20) | `self-help`, `suggest-fix` or `summary` |
+| `summary` | TEXT | NOT NULL |
+| `steps` | TEXT | NOT NULL; JSON array of strings |
+| `source` | VARCHAR(20) | `gemini` |
+| `it_related` | BOOLEAN | NOT NULL; V22 removed earlier "not an IT problem" rows (they are no longer saved) |
+| `created_at` | TIMESTAMPTZ | NOT NULL |
+
+### 2.13 `category_settings` (V23)
+Which incident categories reporters can pick. The codes mirror the `Category` enum; a missing row counts as active.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `code` | VARCHAR(30) | Primary key (`NETWORK`, `HARDWARE`, ... `STORAGE`) |
+| `active` | BOOLEAN | NOT NULL, default `true` |
+
+### 2.14 Other additions
+- `users.avatar` (TEXT, nullable, V20): the Google profile picture URL, refreshed at each Google sign-in; password accounts show the first letter of their name.
 
 ---
 
@@ -147,3 +197,15 @@ To satisfy **NFR-02** ($< 200\text{ ms}$ query response), the following indexes 
 - **`V9__role_based_demo_accounts.sql`**: Demo accounts named by role (`emp`, `tech_net`, `tech_hw`, `tech_lead`, `admin`); email made optional.
 - **`V10__root_role_and_google_sign_in.sql`**: `ROOT` role, single-root index, Google account id, optional password.
 - **`V11__services_sla_policies_feedback.sql`**: IT services, SLA policies, wider categories, response/escalation tracking and feedback.
+- **`V12__demo_password_test.sql`**: Demo accounts use the password `test` (root untouched).
+- **`V13__must_change_password.sql`**: `users.must_change_password` for administrator-created accounts.
+- **`V14__ticket_update_kinds.sql`**: `incident_comments.kind` for the Updates thread.
+- **`V15__acknowledge_capacity_escalation.sql`**: `ACKNOWLEDGED` status, `incidents.escalation_level`, `users.max_active_tickets` and `users.is_team_lead`.
+- **`V16__self_help_feedback.sql`**: `self_help_feedback` table.
+- **`V17__major_incidents.sql`**: `incidents.parent_incident_id`, self-link check and index.
+- **`V18__priority_at_breach.sql`**: remembers the priority when a resolution target was first missed.
+- **`V19__incident_affected.sql`**: `incident_affected` ("this affects me too").
+- **`V20__user_avatar.sql`**: `users.avatar`.
+- **`V21__ai_advice_cache.sql`**: `ai_advice_cache`.
+- **`V22__drop_non_it_advice.sql`**: removes saved "not an IT problem" answers.
+- **`V23__category_settings.sql`**: `category_settings`, seeded with the nine categories.

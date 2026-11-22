@@ -26,14 +26,14 @@ ServiceDesk strictly adheres to **Clean Architecture** and the **Hexagonal (Port
 +--------------------------------------------------------------------------------+
 |                               PURE DOMAIN CORE                                 |
 |            (Incident, User, Priority, SlaWindow, State Machine,                |
-|             Assignment Strategies, Priority Matrix, Domain Events)             |
+|      Assignment Strategies + Capacity Decorator, Escalation Chain, Events)     |
 +--------------------------------------------------------------------------------+
                                        ▲
                                        │
 +--------------------------------------------------------------------------------+
 |                             INFRASTRUCTURE ADAPTERS                            |
 |       (PostgreSQL Spring Data Repositories, Flyway Migrations, JPA Entities,   |
-|            Email Gateway Adapter, System Clock Configuration)                  |
+|   Email (Brevo / log), Gemini, SSE live updates, Rate limiting, Clock config)  |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -45,7 +45,7 @@ To ensure clear accountability across the 5-person engineering team, every major
 
 | Area & Ownership Slot | Primary Responsibility | Target Package / Directory | Key Classes & Interfaces |
 | :--- | :--- | :--- | :--- |
-| **Owner 1**<br>*(Domain Core & OOP Patterns)* | Pure domain models, state machine, strategies, domain events, and factory. | `backend/src/main/java/com/servicedesk/domain/**` | `Incident`, `IncidentId`, `IncidentState` (and all 7 states), `AssignmentStrategy` (RoundRobin, LeastLoaded, SkillMatch), `PriorityCalculationStrategy`, `IncidentFactory`, `DomainEvent`. |
+| **Owner 1**<br>*(Domain Core & OOP Patterns)* | Pure domain models, state machine, strategies, domain events, and factory. | `backend/src/main/java/com/servicedesk/domain/**` | `Incident`, `IncidentId`, `IncidentState` (and all 8 states), `AssignmentStrategy` (RoundRobin, LeastLoaded, SkillMatch), `PriorityCalculationStrategy`, `IncidentFactory`, `DomainEvent`. |
 | **Owner 2**<br>*(API, Security & Scheduler)* | REST controllers, Spring Security JWT filters, background SLA breach evaluator, application service orchestration. | `backend/src/main/java/com/servicedesk/api/**`<br>`backend/src/main/java/com/servicedesk/application/**` | `IncidentController`, `AuthController`, `AdminController`, `IncidentApplicationService`, `SlaScheduledEvaluator`, `SecurityConfig`, `JwtAuthenticationFilter`. |
 | **Owner 3**<br>*(Frontend Next.js UI & Client State)* | Next.js 15 App Router interface, Biome linting, TypeScript contracts, role dashboards, and responsive forms. | `frontend/src/**` | `app/incidents/page.tsx`, `app/incidents/[id]/page.tsx`, `components/IncidentCard.tsx`, `components/StateTimeline.tsx`, `components/SearchFilters.tsx`, `lib/api-client.ts`. |
 | **Owner 4**<br>*(Persistence, DB & Test Suite)* | PostgreSQL schema, Flyway migrations, JPA entities, repository adapters, ArchUnit and integration test suites. | `backend/src/main/java/com/servicedesk/infrastructure/**`<br>`backend/src/test/**`<br>`backend/src/main/resources/db/migration/**` | `JpaIncidentRepositoryAdapter`, `IncidentJpaEntity`, `V1..V5 Flyway migrations`, `IncidentStateTest`, `DomainIsolationTest`, `AssignmentStrategyTest`, `IncidentLifecycleIntegrationTest`. |
@@ -75,17 +75,29 @@ backend/src/main/java/com/servicedesk/
 │   │       ├── IncidentState.java                   (Interface)
 │   │       ├── ReportedState.java
 │   │       ├── AssignedState.java
+│   │       ├── AcknowledgedState.java               (Accepted, not started)
 │   │       ├── InProgressState.java
 │   │       ├── PendingInfoState.java
 │   │       ├── ResolvedState.java
 │   │       ├── ClosedState.java
-│   │       └── CancelledState.java
+│   │       ├── CancelledState.java
+│   │       └── ParentResolution.java                (Resolve with the major incident)
 │   │
 │   ├── assignment/                                  (Strategy Pattern)
 │   │   ├── AssignmentStrategy.java                  (Strategy Interface)
 │   │   ├── RoundRobinAssignmentStrategy.java
 │   │   ├── LeastLoadedAssignmentStrategy.java
-│   │   └── SkillMatchAssignmentStrategy.java
+│   │   ├── SkillMatchAssignmentStrategy.java
+│   │   └── CapacityAwareAssignmentStrategy.java     (Decorator: skips full technicians)
+│   │
+│   ├── escalation/                                  (Chain of Responsibility)
+│   │   ├── EscalationHandler.java                   (Abstract handler)
+│   │   ├── TeamLeadEscalationHandler.java           (L1)
+│   │   ├── AdministratorEscalationHandler.java      (L2)
+│   │   ├── ItManagerEscalationHandler.java          (L3)
+│   │   ├── EscalationChain.java                     (Builds the standard chain)
+│   │   ├── EscalationDecision.java
+│   │   └── EscalationLevel.java                     (Enum: NONE .. IT_MANAGER)
 │   │
 │   ├── priority/                                    (Strategy Pattern)
 │   │   ├── PriorityCalculationStrategy.java         (Strategy Interface)
@@ -93,7 +105,9 @@ backend/src/main/java/com/servicedesk/
 │   │
 │   ├── intelligence/                                <-- OWNER 5: INTELLIGENCE STRATEGY
 │   │   ├── SimilarityStrategy.java                  (Strategy Interface)
-│   │   └── JaccardSimilarityStrategy.java
+│   │   ├── JaccardSimilarityStrategy.java
+│   │   ├── IncidentAssistant.java                   (Port: triage, self-help, fix, summary)
+│   │   └── RuleBasedIncidentAssistant.java          (Fallback when Gemini is off or fails)
 │   │
 │   ├── user/
 │   │   ├── User.java                                (Entity)
@@ -125,7 +139,10 @@ backend/src/main/java/com/servicedesk/
 ├── application/                                     <-- OWNER 2: APPLICATION SERVICES
 │   ├── IncidentApplicationService.java              (Command & Query Orchestrator)
 │   ├── UserApplicationService.java
-│   ├── SlaScheduledEvaluator.java                   (Background Cron: checks deadlines)
+│   ├── SlaScheduledEvaluator.java                   (Background Cron: deadlines + escalation chain)
+│   ├── AssistantApplicationService.java             (Gemini first, rules on failure)
+│   ├── IssueBoardService.java                       (Read-only "All issues")
+│   ├── LoginAttemptGuard.java                       (Per-username sign-in lockout)
 │   └── dto/
 │       ├── CreateIncidentCommand.java
 │       ├── AssignTechnicianCommand.java
@@ -135,6 +152,8 @@ backend/src/main/java/com/servicedesk/
 │   ├── IncidentController.java
 │   ├── AuthController.java
 │   ├── AdminController.java
+│   ├── IssueBoardController.java                    (GET /issues)
+│   ├── EventsController.java                        (GET /events, Server-Sent Events)
 │   ├── dto/
 │   │   ├── CreateIncidentRequest.java
 │   │   ├── IncidentDetailResponse.java
@@ -159,13 +178,55 @@ backend/src/main/java/com/servicedesk/
     │
     ├── notification/
     │   ├── InAppNotificationChannelAdapter.java     (Implements NotificationChannel)
-    │   └── EmailGatewayAdapter.java                 (Implements NotificationChannel)
+    │   ├── BrevoEmailChannelAdapter.java            (Implements NotificationChannel; BREVO_API_KEY set)
+    │   └── EmailGatewayAdapter.java                 (Implements NotificationChannel; log only)
+    │
+    ├── live/
+    │   ├── LiveEventBroadcaster.java                (Open SSE streams per user)
+    │   └── LiveNotificationChannelAdapter.java      (Implements NotificationChannel)
+    │
+    ├── ai/
+    │   ├── GeminiAssistantAdapter.java              (Implements IncidentAssistant)
+    │   └── AssistantUnavailableException.java
     │
     ├── security/
     │   ├── SecurityConfig.java
     │   ├── JwtTokenProvider.java
-    │   └── CustomUserDetailsService.java
+    │   ├── CustomUserDetailsService.java
+    │   └── ratelimit/
+    │       ├── RateLimiter.java                     (Port)
+    │       ├── InMemoryRateLimiter.java             (Token buckets)
+    │       ├── RateLimitPolicy.java
+    │       ├── RateLimitSettings.java               (auth / ai / write / api policies)
+    │       └── RateLimitFilter.java                 (429 + Retry-After)
     │
     └── config/
-        └── ClockConfig.java                         (Injected java.time.Clock)
+        ├── ClockConfig.java                         (Injected java.time.Clock)
+        └── AsyncConfig.java                         (@EnableAsync for outbound email)
 ```
+
+---
+
+## 4. Cross-Cutting Runtime Flows
+
+### 4.1 Request pipeline
+`JwtAuthenticationFilter` identifies the user, then `RateLimitFilter` takes a token from the matching bucket (`auth` by address; `ai`, `write` and `api` by user) and answers **429** with `Retry-After` when it is empty. URL rules and `@PreAuthorize` follow, then the per-ticket scope checks in the application services. The health check and `GET /api/v1/events` are not rate limited.
+
+### 4.2 After a ticket changes
+The application service saves the aggregate, writes audit entries and Updates-thread entries (`UpdateKind`) in the same transaction, then registers after-commit work through `NotificationDispatch`:
+1. Each `NotificationMessage` goes to every `NotificationChannel`: the in-app record, email (Brevo when `BREVO_API_KEY` is set, `@Async`; otherwise a log line) and the live channel.
+2. `incident-updated` is sent over SSE to the reporter, the assignee and administrators, whose open pages refetch the ticket through the normal scoped endpoints.
+
+Nothing is sent if the transaction rolls back, and a failing channel never undoes the user's action.
+
+### 4.3 Scheduled SLA run
+`SlaScheduledEvaluator` evaluates each open ticket in its own short transaction: SLA status (warning, breach, one-off priority bump), then the escalation chain (`EscalationChain.standard()`), which raises the ticket at most one level per run and, at the administrator level, reassigns it through `CapacityAwareAssignmentStrategy`.
+
+### 4.4 Assistant calls
+`AssistantApplicationService` builds the domain records (`TicketDraft`, `TicketContext`, `PastFix`) from data the caller may see, asks `GeminiAssistantAdapter` when a key is configured and falls back to `RuleBasedIncidentAssistant` on any failure. The browser only ever talks to our API; the Gemini key stays on the server.
+
+### 4.6 Quick fixes, summaries and the help chat
+`AssistantApplicationService` serves four things: triage, quick fixes (before a ticket exists and on an open ticket), summaries and chat. Quick fixes and summaries go through a cache first: the key is a SHA-256 hash of the kind, the ticket id (for per-ticket answers) and the normalised text, so a repeat question is answered from `ai_advice_cache`. Only Gemini answers are stored, because the rule-based answer is free. Summaries include the status and the thread in their key, so a new update produces a fresh summary. Chat sends the last twelve messages, the caller's own ticket lines and the best-matching articles from `KnowledgeBase` to Gemini, and answers from the knowledge base alone when Gemini fails. The "is this an IT problem" flag is part of the structured answer, so it costs no extra call.
+
+### 4.7 Frontend shell
+`AppShell` wraps every page: a collapsible `Sidebar` (a slide-in drawer under 900 px), the page, and the floating `ChatWidget`. Navigation is plain text links with the current page highlighted; the footer holds the profile picture or first letter, the light/dark toggle and sign out.

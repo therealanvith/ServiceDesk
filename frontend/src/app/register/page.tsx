@@ -1,6 +1,9 @@
 "use client";
 
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useAuth } from "@/context/AuthContext";
+import { type AuthConfig, api } from "@/lib/apiClient";
+import { useCooldown } from "@/lib/useCooldown";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,17 +11,41 @@ import { useEffect, useState } from "react";
 const USERNAME_PATTERN = "[a-z0-9._\\-]{3,50}";
 
 export default function RegisterPage() {
-  const { user, register } = useAuth();
+  const { user, register, loginWithGoogle } = useAuth();
   const router = useRouter();
 
   const [form, setForm] = useState({ username: "", fullName: "", email: "", password: "" });
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState<AuthConfig | null>(null);
+  const cooldown = useCooldown();
 
   useEffect(() => {
     if (user) router.replace("/");
   }, [user, router]);
+
+  useEffect(() => {
+    api
+      .getAuthConfig()
+      .then(setConfig)
+      .catch(() => setConfig({ googleClientId: null, registrationEnabled: true }));
+  }, []);
+
+  // A first Google sign-in creates the employee account, so it doubles as sign-up.
+  const signUpWithGoogle = async (credential: string) => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await loginWithGoogle(credential);
+      router.replace("/");
+    } catch (err: unknown) {
+      cooldown.trigger(err);
+      setError(err instanceof Error ? err.message : "Couldn't sign up with Google");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [key]: e.target.value });
@@ -40,6 +67,7 @@ export default function RegisterPage() {
       });
       router.replace("/");
     } catch (err: unknown) {
+      cooldown.trigger(err);
       setError(err instanceof Error ? err.message : "Couldn't create the account");
     } finally {
       setSubmitting(false);
@@ -50,6 +78,18 @@ export default function RegisterPage() {
     <div className="auth">
       <h1>Create an account</h1>
       <p>New accounts can report issues. IT staff access is granted by an administrator.</p>
+
+      {config?.googleClientId && (
+        <>
+          <GoogleSignInButton
+            clientId={config.googleClientId}
+            text="signup_with"
+            onCredential={signUpWithGoogle}
+            onError={setError}
+          />
+          <p className="divider">or create a username and password</p>
+        </>
+      )}
 
       <form className="card auth-form" onSubmit={handleSubmit}>
         {error && (
@@ -116,8 +156,16 @@ export default function RegisterPage() {
             onChange={(e) => setConfirm(e.target.value)}
           />
         </label>
-        <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-          {submitting ? "Creating account…" : "Create account"}
+        <button
+          type="submit"
+          className="btn btn-primary btn-block"
+          disabled={submitting || cooldown.coolingDown}
+        >
+          {submitting
+            ? "Creating account…"
+            : cooldown.coolingDown
+              ? `Try again in ${cooldown.secondsLeft} s`
+              : "Create account"}
         </button>
       </form>
 

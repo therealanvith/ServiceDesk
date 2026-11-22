@@ -87,3 +87,10 @@ copilot-instructions.md
 .cursorrules
 .windsurfrules
 .clinerules
+
+# Claude Code local state (worktrees, settings)
+.claude/
+
+# Local working files (not part of the submission)
+VIDEO-SCRIPT.md
+prompt.md

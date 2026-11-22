@@ -1,8 +1,10 @@
 package com.servicedesk.infrastructure.persistence.adapter;
 
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.Incident;
 import com.servicedesk.domain.incident.IncidentId;
 import com.servicedesk.domain.incident.IncidentStatus;
+import com.servicedesk.domain.incident.state.AcknowledgedState;
 import com.servicedesk.domain.incident.state.AssignedState;
 import com.servicedesk.domain.incident.state.CancelledState;
 import com.servicedesk.domain.incident.state.ClosedState;
@@ -26,7 +28,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
@@ -132,9 +133,16 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
   }
 
   @Override
+  public List<Incident> findChildren(IncidentId parentId) {
+    return incidentJpaRepository.findByParentIncidentId(parentId.getValue()).stream()
+        .map(this::toDomain)
+        .toList();
+  }
+
+  @Override
   public int countActiveByTechnicianId(UserId technicianId) {
     return incidentJpaRepository.countByAssigneeIdAndStatusNotIn(
-        technicianId.getValue(), Set.of(IncidentStatus.CLOSED, IncidentStatus.CANCELLED));
+        technicianId.getValue(), IncidentStatus.notWorkload());
   }
 
   private Incident toDomain(IncidentEntity entity) {
@@ -142,6 +150,7 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
         switch (entity.getStatus()) {
           case REPORTED -> new ReportedState();
           case ASSIGNED -> new AssignedState();
+          case ACKNOWLEDGED -> new AcknowledgedState();
           case IN_PROGRESS -> new InProgressState();
           case PENDING_INFO -> new PendingInfoState();
           case RESOLVED -> new ResolvedState();
@@ -179,6 +188,12 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     incident.setAffectedServiceId(entity.getServiceId());
     incident.setRespondedAt(entity.getRespondedAt());
     incident.setEscalatedAt(entity.getEscalatedAt());
+    incident.restorePriorityAtBreach(entity.getPriorityAtBreach());
+    incident.restoreParent(
+        entity.getParentIncidentId() == null ? null : IncidentId.of(entity.getParentIncidentId()));
+    incident.escalateTo(
+        entity.getEscalationLevel() != null ? entity.getEscalationLevel() : EscalationLevel.NONE,
+        entity.getEscalatedAt());
     incident.recordFeedback(entity.getFeedbackRating(), entity.getFeedbackComment());
     incident.setResolvedAt(entity.getResolvedAt());
     incident.setClosedAt(entity.getClosedAt());
@@ -229,6 +244,10 @@ public class JpaIncidentRepositoryAdapter implements IncidentRepository {
     entity.setServiceId(incident.getAffectedServiceId());
     entity.setRespondedAt(incident.getRespondedAt());
     entity.setEscalatedAt(incident.getEscalatedAt());
+    entity.setPriorityAtBreach(incident.getPriorityAtBreach());
+    entity.setParentIncidentId(
+        incident.getParentIncidentId() == null ? null : incident.getParentIncidentId().getValue());
+    entity.setEscalationLevel(incident.getEscalationLevel());
     entity.setFeedbackRating(incident.getFeedbackRating());
     entity.setFeedbackComment(incident.getFeedbackComment());
     entity.setResolvedAt(incident.getResolvedAt());

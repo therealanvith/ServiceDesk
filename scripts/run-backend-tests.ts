@@ -44,6 +44,22 @@ function findMavenCommand(backendDir: string): string | null {
   return null;
 }
 
+/**
+ * Bun loads the project's .env into process.env before this script runs. Those values are meant
+ * for Docker (for example SPRING_DATASOURCE_URL pointing at the "postgres" container) and must not
+ * leak into the test JVM, so every key defined in .env is dropped from the child's environment.
+ */
+function environmentWithoutDotEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  const dotEnv = path.resolve(process.cwd(), ".env");
+  if (!fs.existsSync(dotEnv)) return env;
+  for (const line of fs.readFileSync(dotEnv, "utf8").split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+    if (match?.[1]) delete env[match[1]];
+  }
+  return env;
+}
+
 function runBackendTests(): void {
   const backendDir = path.resolve(process.cwd(), "backend");
   const mvnCmd = findMavenCommand(backendDir);
@@ -62,6 +78,7 @@ function runBackendTests(): void {
     cwd: backendDir,
     shell: true,
     stdio: "inherit",
+    env: environmentWithoutDotEnv(),
   });
 
   if (result.status !== 0) {

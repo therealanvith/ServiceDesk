@@ -44,10 +44,13 @@ export function GoogleSignInButton({
   clientId,
   onCredential,
   onError,
+  text = "continue_with",
 }: {
   clientId: string;
   onCredential: (credential: string) => void;
   onError: (message: string) => void;
+  /** Google's button wording, e.g. "signup_with" on the registration page. */
+  text?: "continue_with" | "signin_with" | "signup_with";
 }) {
   const container = useRef<HTMLDivElement>(null);
   const handlers = useRef({ onCredential, onError });
@@ -74,7 +77,7 @@ export function GoogleSignInButton({
         google.renderButton(container.current, {
           theme: dark ? "filled_black" : "outline",
           size: "large",
-          text: "continue_with",
+          text,
           shape: "rectangular",
           width: Math.min(340, container.current.clientWidth || 340),
         });
@@ -83,7 +86,7 @@ export function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, text]);
 
   return <div ref={container} className="google-button" />;
 }

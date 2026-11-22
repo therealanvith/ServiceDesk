@@ -1,20 +1,26 @@
 "use client";
 
-import { type CommentItem, api } from "@/lib/apiClient";
-import { timeAgo } from "@/lib/labels";
+import { UpdateEntry } from "@/components/UpdateEntry";
+import { type CommentItem, type IncidentStatus, api } from "@/lib/apiClient";
+import { ROLE_LABELS } from "@/lib/labels";
 import { useEffect, useState } from "react";
 
-interface CommentThreadProps {
+interface UpdatesThreadProps {
   incidentId: string;
   initialComments: CommentItem[];
   currentUserRole: string;
+  status?: IncidentStatus;
+  /** Shown to the reporter while a question is waiting on them. */
+  onReply?: () => void;
 }
 
-export function CommentThread({
+export function UpdatesThread({
   incidentId,
   initialComments,
   currentUserRole,
-}: CommentThreadProps) {
+  status,
+  onReply,
+}: UpdatesThreadProps) {
   const [comments, setComments] = useState<CommentItem[]>(initialComments);
   const [commentText, setCommentText] = useState("");
   const [isInternal, setIsInternal] = useState(false);
@@ -49,33 +55,44 @@ export function CommentThread({
     }
   };
 
+  // While the ticket waits on the reporter, the open question is pinned on top.
+  const openQuestion =
+    status === "PENDING_INFO" ? [...comments].reverse().find((c) => c.kind === "QUESTION") : null;
+
   return (
-    <section className="card" aria-labelledby="comments-title">
+    <section className="card" aria-labelledby="updates-title">
       <div className="card-header">
-        <h2 id="comments-title">
-          Comments{comments.length > 0 && <span className="count">{comments.length}</span>}
+        <h2 id="updates-title">
+          Updates{comments.length > 0 && <span className="count">{comments.length}</span>}
         </h2>
       </div>
+
+      {openQuestion && (
+        <div className="pinned-question">
+          <p className="callout-title">
+            {onReply ? `${openQuestion.authorName} asked you` : "Waiting for the reporter’s reply"}
+          </p>
+          <p className="comment-body">{openQuestion.commentText}</p>
+          {onReply && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={onReply}>
+              Reply
+            </button>
+          )}
+        </div>
+      )}
 
       {comments.length > 0 && (
         <div className="comments">
           {comments.map((c) => (
-            <article key={c.id} className={`comment ${c.isInternal ? "comment-internal" : ""}`}>
-              <div>
-                <div className="comment-meta">
-                  <span className="comment-author">{c.authorName}</span>
-                  {c.isInternal && <span className="tag internal-tag">Internal</span>}
-                  <time
-                    className="comment-time"
-                    dateTime={c.createdAt}
-                    title={new Date(c.createdAt).toLocaleString()}
-                  >
-                    {timeAgo(c.createdAt)}
-                  </time>
-                </div>
-                <p className="comment-body">{c.commentText}</p>
-              </div>
-            </article>
+            <UpdateEntry
+              key={c.id}
+              author={c.authorName}
+              role={c.authorRole && c.authorRole !== "EMPLOYEE" ? ROLE_LABELS[c.authorRole] : null}
+              kind={c.kind}
+              text={c.commentText}
+              createdAt={c.createdAt}
+              internal={c.isInternal}
+            />
           ))}
         </div>
       )}
@@ -91,8 +108,8 @@ export function CommentThread({
           rows={3}
           value={commentText}
           onChange={(e) => setCommentText(e.target.value)}
-          placeholder={comments.length === 0 ? "Start the conversation…" : "Write a reply…"}
-          aria-label="Comment"
+          placeholder={comments.length === 0 ? "Start the conversation…" : "Write an update…"}
+          aria-label="Write an update"
           // Locked while posting so nothing typed meanwhile is lost when the box clears.
           readOnly={submitting}
           aria-busy={submitting || undefined}
@@ -115,7 +132,7 @@ export function CommentThread({
             className="btn btn-primary"
             disabled={submitting || !commentText.trim()}
           >
-            {submitting ? "Posting…" : "Comment"}
+            {submitting ? "Posting…" : "Post update"}
           </button>
         </div>
       </form>

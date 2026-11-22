@@ -14,10 +14,12 @@ public record UserProfileResponse(
     Set<Category> skills,
     boolean mustChangePassword,
     boolean googleLinked,
-    boolean hasPassword) {
+    boolean hasPassword,
+    boolean teamLead,
+    String avatar) {
 
   public UserProfileResponse(
       UUID id, String username, String fullName, String email, Role role, Set<Category> skills) {
-    this(id, username, fullName, email, role, skills, false, false, true);
+    this(id, username, fullName, email, role, skills, false, false, true, false, null);
   }
 }

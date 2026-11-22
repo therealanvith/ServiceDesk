@@ -1,6 +1,7 @@
 package com.servicedesk.infrastructure.persistence.entity;
 
 import com.servicedesk.domain.user.Role;
+import com.servicedesk.domain.user.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -47,6 +48,39 @@ public class UserEntity {
 
   @Column(name = "must_change_password", nullable = false)
   private boolean mustChangePassword = false;
+
+  @Column(name = "max_active_tickets", nullable = false)
+  private int maxActiveTickets = User.DEFAULT_MAX_ACTIVE_TICKETS;
+
+  @Column(name = "is_team_lead", nullable = false)
+  private boolean teamLead = false;
+
+  @Column(name = "avatar")
+  private String avatar;
+
+  public String getAvatar() {
+    return avatar;
+  }
+
+  public void setAvatar(String avatar) {
+    this.avatar = avatar;
+  }
+
+  public int getMaxActiveTickets() {
+    return maxActiveTickets;
+  }
+
+  public void setMaxActiveTickets(int maxActiveTickets) {
+    this.maxActiveTickets = maxActiveTickets;
+  }
+
+  public boolean isTeamLead() {
+    return teamLead;
+  }
+
+  public void setTeamLead(boolean teamLead) {
+    this.teamLead = teamLead;
+  }
 
   public boolean isMustChangePassword() {
     return mustChangePassword;

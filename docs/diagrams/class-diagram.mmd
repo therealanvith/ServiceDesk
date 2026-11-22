@@ -16,13 +16,21 @@ classDiagram
         -UserId assigneeId
         -IncidentState currentState
         -SlaWindow slaWindow
+        -EscalationLevel escalationLevel
+        -IncidentId parentIncidentId
+        -Instant respondedAt
         -Instant createdAt
         -Instant updatedAt
         +assign(UserId technicianId, UserId actorId)
+        +acknowledge(UserId technicianId)
         +startWork(UserId technicianId)
         +requestInfo(String question, UserId technicianId)
         +provideInfo(String answer, UserId reporterId)
         +resolve(String resolutionSummary, UserId technicianId)
+        +resolveWithParent(String resolutionSummary)
+        +linkToParent(IncidentId parentId)
+        +escalateTo(EscalationLevel level, Instant at)
+        +isResponseOverdue(Instant now) boolean
         +close(UserId actorId)
         +cancel(String reason, UserId actorId)
         +evaluateSla(Clock clock)
@@ -50,8 +58,12 @@ classDiagram
         -Role role
         -Set~Category~ skills
         -int activeTicketsCount
+        -int maxActiveTickets
+        -boolean teamLead
         +isAvailable() boolean
         +hasSkill(Category category) boolean
+        +hasCapacity() boolean
+        +isTeamLead() boolean
     }
 
     class SlaWindow {
@@ -82,10 +94,12 @@ classDiagram
     class IncidentState {
         <<interface>>
         +assign(Incident context, UserId technicianId, UserId actorId)
+        +acknowledge(Incident context, UserId technicianId)
         +startWork(Incident context, UserId technicianId)
         +requestInfo(Incident context, String question, UserId technicianId)
         +provideInfo(Incident context, String answer, UserId reporterId)
         +resolve(Incident context, String resolutionSummary, UserId technicianId)
+        +resolveWithParent(Incident context, String resolutionSummary)
         +close(Incident context, UserId actorId)
         +cancel(Incident context, String reason, UserId actorId)
         +getStatus() IncidentStatus
@@ -97,9 +111,18 @@ classDiagram
         +getStatus() IncidentStatus
     }
     class AssignedState {
+        +acknowledge(Incident context, UserId technicianId)
         +startWork(Incident context, UserId technicianId)
         +assign(Incident context, UserId technicianId, UserId actorId)
         +cancel(Incident context, String reason, UserId actorId)
+        +resolveWithParent(Incident context, String resolutionSummary)
+        +getStatus() IncidentStatus
+    }
+    class AcknowledgedState {
+        +startWork(Incident context, UserId technicianId)
+        +assign(Incident context, UserId technicianId, UserId actorId)
+        +cancel(Incident context, String reason, UserId actorId)
+        +resolveWithParent(Incident context, String resolutionSummary)
         +getStatus() IncidentStatus
     }
     class InProgressState {
@@ -125,6 +148,7 @@ classDiagram
 
     IncidentState <|.. ReportedState
     IncidentState <|.. AssignedState
+    IncidentState <|.. AcknowledgedState
     IncidentState <|.. InProgressState
     IncidentState <|.. PendingInfoState
     IncidentState <|.. ResolvedState
@@ -154,6 +178,60 @@ classDiagram
     AssignmentStrategy <|.. RoundRobinAssignmentStrategy
     AssignmentStrategy <|.. LeastLoadedAssignmentStrategy
     AssignmentStrategy <|.. SkillMatchAssignmentStrategy
+
+    %% DECORATOR: capacity limits for any strategy
+    class CapacityAwareAssignmentStrategy {
+        -AssignmentStrategy delegate
+        +selectTechnician(Incident incident, List~User~ availableTechnicians) Optional~User~
+    }
+    AssignmentStrategy <|.. CapacityAwareAssignmentStrategy
+    CapacityAwareAssignmentStrategy o-- AssignmentStrategy : wraps
+
+    %% ==========================================
+    %% CHAIN OF RESPONSIBILITY: Escalation
+    %% ==========================================
+    class EscalationHandler {
+        <<abstract>>
+        -EscalationHandler next
+        +linkWith(EscalationHandler next) EscalationHandler
+        +handle(Incident incident, Instant now) Optional~EscalationDecision~
+        #level() EscalationLevel
+        #applies(Incident incident, Instant now) boolean
+        #reason(Incident incident) String
+    }
+    class TeamLeadEscalationHandler
+    class AdministratorEscalationHandler
+    class ItManagerEscalationHandler
+    class EscalationChain {
+        +standard()$ EscalationHandler
+    }
+    class EscalationDecision {
+        <<record>>
+        +EscalationLevel level
+        +String reason
+    }
+    class EscalationLevel {
+        <<enumeration>>
+        NONE
+        TEAM_LEAD
+        ADMINISTRATOR
+        IT_MANAGER
+    }
+    EscalationHandler <|-- TeamLeadEscalationHandler
+    EscalationHandler <|-- AdministratorEscalationHandler
+    EscalationHandler <|-- ItManagerEscalationHandler
+    EscalationHandler --> EscalationHandler : next
+    EscalationChain ..> EscalationHandler : builds
+    EscalationHandler ..> EscalationDecision : returns
+    Incident --> EscalationLevel
+
+    class SlaScheduledEvaluator {
+        -EscalationHandler escalationChain
+        -AssignmentStrategy reassignment
+        +evaluateAllSla()
+    }
+    SlaScheduledEvaluator --> EscalationHandler
+    SlaScheduledEvaluator --> CapacityAwareAssignmentStrategy
 
     class PriorityCalculationStrategy {
         <<interface>>
@@ -266,13 +344,93 @@ classDiagram
         -EmailService emailService
         +send(NotificationMessage message)
     }
+    class BrevoEmailChannelAdapter {
+        -RestClient http
+        -String apiKey
+        +send(NotificationMessage message)
+    }
+    class LiveNotificationChannelAdapter {
+        -LiveEventBroadcaster broadcaster
+        +send(NotificationMessage message)
+    }
     NotificationChannel <|.. InAppNotificationChannel
     NotificationChannel <|.. EmailGatewayAdapter
+    NotificationChannel <|.. BrevoEmailChannelAdapter
+    NotificationChannel <|.. LiveNotificationChannelAdapter
+
+    %% OBSERVER over Server-Sent Events: each open stream is a subscriber
+    class LiveEventBroadcaster {
+        -Map streams
+        +subscribe(UUID userId) SseEmitter
+        +send(UUID userId, String event, Object data)
+    }
+    LiveNotificationChannelAdapter --> LiveEventBroadcaster
+
+    %% ADAPTER: help desk assistant
+    class IncidentAssistant {
+        <<interface>>
+        +source() String
+        +triage(TicketDraft draft, List~String~ serviceNames) TriageSuggestion
+        +selfHelp(TicketDraft draft, List~PastFix~ pastFixes) AssistantAdvice
+        +suggestFix(TicketContext ticket, List~PastFix~ similarResolved) AssistantAdvice
+        +summarize(TicketContext ticket) String
+    }
+    class GeminiAssistantAdapter {
+        -RestClient http
+        -String model
+        +isEnabled() boolean
+    }
+    class RuleBasedIncidentAssistant
+    class AssistantApplicationService {
+        -GeminiAssistantAdapter gemini
+        -IncidentAssistant rules
+    }
+    IncidentAssistant <|.. GeminiAssistantAdapter
+    IncidentAssistant <|.. RuleBasedIncidentAssistant
+    AssistantApplicationService --> IncidentAssistant : Gemini first, rules on failure
+
+    class KnowledgeBase {
+        <<utility>>
+        +articles() List~Article~
+        +best(text) Optional~Article~
+        +search(text, limit) List~Article~
+    }
+    class AiAdviceCacheEntity {
+        -String cacheKey
+        -String kind
+        -String summary
+        -String steps
+        -boolean itRelated
+    }
+    class CategoryApplicationService {
+        +list() List~CategorySettingResponse~
+        +update(category, active)
+    }
+    RuleBasedIncidentAssistant --> KnowledgeBase : on-device answers
+    GeminiAssistantAdapter --> KnowledgeBase : grounding notes for chat
+    AssistantApplicationService --> AiAdviceCacheEntity : saves Gemini answers
+    class IncidentAffectedEntity {
+        -UUID incidentId
+        -UUID userId
+    }
+    IncidentApplicationService --> IncidentAffectedEntity : "affects me too"
+    IncidentApplicationService --> CategoryApplicationService : category switch
 
     %% Relationships
     Incident *-- IncidentId
     Incident *-- SlaWindow
     Incident --> UserId : reporter & assignee
     User *-- UserId
+    Incident --> Incident : parent (major incident)
+
+    class UpdateKind {
+        <<enumeration>>
+        COMMENT
+        QUESTION
+        ANSWER
+        PICKUP
+        RESOLUTION
+        STATUS
+    }
     AuditLog --> IncidentId
     AuditLog --> UserId

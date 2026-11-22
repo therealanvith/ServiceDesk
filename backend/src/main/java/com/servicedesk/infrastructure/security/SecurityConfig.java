@@ -2,6 +2,11 @@ package com.servicedesk.infrastructure.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.servicedesk.api.dto.ErrorResponse;
+import com.servicedesk.infrastructure.security.ratelimit.InMemoryRateLimiter;
+import com.servicedesk.infrastructure.security.ratelimit.RateLimitFilter;
+import com.servicedesk.infrastructure.security.ratelimit.RateLimitSettings;
+import com.servicedesk.infrastructure.security.ratelimit.RateLimiter;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -12,6 +17,7 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,18 +39,26 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+// Imported so web-slice tests, which skip component scanning, still get the limiter.
+@Import({InMemoryRateLimiter.class, RateLimitSettings.class})
 public class SecurityConfig {
 
   private final List<String> allowedOrigins;
   private final JwtAuthenticationFilter jwtAuthenticationFilter;
   private final ObjectMapper objectMapper;
   private final Clock clock;
+  private final RateLimiter rateLimiter;
+  private final RateLimitSettings rateLimitSettings;
 
   public SecurityConfig(
       @Value("${app.security.cors.allowed-origins:http://localhost:3000}") String allowedOriginsStr,
       JwtAuthenticationFilter jwtAuthenticationFilter,
       ObjectMapper objectMapper,
-      Clock clock) {
+      Clock clock,
+      RateLimiter rateLimiter,
+      RateLimitSettings rateLimitSettings) {
+    this.rateLimiter = rateLimiter;
+    this.rateLimitSettings = rateLimitSettings;
     this.objectMapper = objectMapper;
     this.clock = clock;
     this.allowedOrigins =
@@ -91,7 +105,11 @@ public class SecurityConfig {
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             auth ->
-                auth.requestMatchers(HttpMethod.GET, "/api/v1/health")
+                // A live-updates stream is authorised when it opens; the dispatch Spring makes
+                // when it ends carries no token and must not be refused.
+                auth.dispatcherTypeMatchers(DispatcherType.ASYNC)
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/health")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/actuator/health")
                     .permitAll()
@@ -102,7 +120,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/users/me", "/api/v1/users/me/**")
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/users/technicians")
-                    .hasAnyRole("ADMINISTRATOR", "ROOT")
+                    .hasAnyRole("TECHNICIAN", "ADMINISTRATOR", "ROOT")
                     .requestMatchers(HttpMethod.PUT, "/api/v1/users/*/skills")
                     .hasAnyRole("ADMINISTRATOR", "ROOT")
                     .requestMatchers("/api/v1/users", "/api/v1/users/**")
@@ -111,7 +129,10 @@ public class SecurityConfig {
                     .authenticated()
                     .anyRequest()
                     .authenticated())
-        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterAfter(
+            new RateLimitFilter(rateLimiter, rateLimitSettings, objectMapper, clock),
+            JwtAuthenticationFilter.class);
 
     return http.build();
   }
@@ -140,7 +161,8 @@ public class SecurityConfig {
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
     configuration.setAllowedHeaders(
         List.of("Authorization", "Content-Type", "Accept", "X-Requested-With"));
-    configuration.setExposedHeaders(List.of("Authorization"));
+    configuration.setExposedHeaders(
+        List.of("Authorization", "Retry-After", "RateLimit-Limit", "RateLimit-Remaining"));
     configuration.setAllowCredentials(true);
     configuration.setMaxAge(3600L);
 

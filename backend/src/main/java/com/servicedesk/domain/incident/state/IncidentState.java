@@ -12,6 +12,11 @@ public interface IncidentState {
     throw new InvalidStateTransitionException("Cannot assign incident in state: " + getStatus());
   }
 
+  default void acknowledge(Incident context, UserId technicianId) {
+    throw new InvalidStateTransitionException(
+        "Cannot acknowledge incident in state: " + getStatus());
+  }
+
   default void startWork(Incident context, UserId technicianId) {
     throw new InvalidStateTransitionException(
         "Cannot start work on incident in state: " + getStatus());
@@ -29,6 +34,15 @@ public interface IncidentState {
 
   default void resolve(Incident context, String resolutionSummary, UserId technicianId) {
     throw new InvalidStateTransitionException("Cannot resolve incident in state: " + getStatus());
+  }
+
+  /**
+   * The major incident this ticket is linked to was resolved. Allowed in every open state, so
+   * linked tickets close out whatever stage they had reached.
+   */
+  default void resolveWithParent(Incident context, String resolutionSummary) {
+    throw new InvalidStateTransitionException(
+        "Cannot resolve incident with its parent in state: " + getStatus());
   }
 
   default void close(Incident context, UserId actorId) {

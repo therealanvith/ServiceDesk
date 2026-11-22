@@ -1,20 +1,30 @@
 import type {
   Category,
   Criticality,
+  EscalationLevel,
   IncidentStatus,
   Priority,
   Role,
+  ServiceHealth,
   SlaStatus,
 } from "@/lib/apiClient";
 
 export const STATUS_LABELS: Record<IncidentStatus, string> = {
   REPORTED: "Reported",
   ASSIGNED: "Assigned",
+  ACKNOWLEDGED: "Acknowledged",
   IN_PROGRESS: "In progress",
   PENDING_INFO: "Waiting on reporter",
   RESOLVED: "Resolved",
   CLOSED: "Closed",
   CANCELLED: "Cancelled",
+};
+
+export const ESCALATION_LABELS: Record<EscalationLevel, string> = {
+  NONE: "Not escalated",
+  TEAM_LEAD: "Escalated to the team lead",
+  ADMINISTRATOR: "Escalated to administrators",
+  IT_MANAGER: "Escalated to the IT manager",
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
@@ -41,6 +51,12 @@ export const CRITICALITY_LABELS: Record<Criticality, string> = {
   HIGH: "High",
   MEDIUM: "Medium",
   LOW: "Low",
+};
+
+export const SERVICE_HEALTH_LABELS: Record<ServiceHealth, string> = {
+  OPERATIONAL: "Operational",
+  DEGRADED: "Degraded",
+  OUTAGE: "Outage",
 };
 
 export const SLA_LABELS: Record<SlaStatus, string> = {
@@ -80,6 +96,8 @@ const AUDIT_LABELS: Record<string, string> = {
   SLA_BREACHED: "SLA target missed",
   COMMENTED: "commented",
   ESCALATED: "escalated: no response in time",
+  LINKED: "linked the ticket",
+  UNLINKED: "unlinked the ticket",
 };
 
 export function auditLabel(action: string): string {

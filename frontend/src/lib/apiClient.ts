@@ -5,7 +5,9 @@ const API_BASE_URL = (
 export class ApiError extends Error {
   constructor(
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    /** From Retry-After when the server refuses with 429. */
+    public readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = "ApiError";
@@ -30,6 +32,7 @@ export type Criticality = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type IncidentStatus =
   | "REPORTED"
   | "ASSIGNED"
+  | "ACKNOWLEDGED"
   | "IN_PROGRESS"
   | "PENDING_INFO"
   | "RESOLVED"
@@ -53,6 +56,13 @@ export interface UserProfile {
   mustChangePassword: boolean;
   googleLinked: boolean;
   hasPassword: boolean;
+  teamLead: boolean;
+  avatar: string | null;
+}
+
+export interface CategorySetting {
+  category: Category;
+  active: boolean;
 }
 
 export interface AuthResult {
@@ -80,6 +90,14 @@ export interface ItService {
   active: boolean;
 }
 
+/** A ticket on either end of a major-incident link. */
+export interface LinkedIncident {
+  id: string;
+  incidentNumber: string;
+  title: string;
+  status: IncidentStatus;
+}
+
 export interface IncidentDetail {
   id: string;
   incidentNumber: string;
@@ -99,8 +117,15 @@ export interface IncidentDetail {
   service: ItService | null;
   respondedAt: string | null;
   escalatedAt: string | null;
+  escalationLevel: EscalationLevel;
+  resolvedAt: string | null;
+  closedAt: string | null;
   feedbackRating: number | null;
   feedbackComment: string | null;
+  /** The major incident this ticket is part of, if any. */
+  parentIncident: LinkedIncident | null;
+  /** Tickets linked under this one when it is a major incident. */
+  childIncidents: LinkedIncident[];
 }
 
 export interface IncidentSummary {
@@ -115,6 +140,10 @@ export interface IncidentSummary {
   slaStatus: SlaStatus | null;
   createdAt: string;
   serviceName: string | null;
+  assigneeId: string | null;
+  resolvedAt: string | null;
+  /** The viewer follows this issue ("affects me too") but did not report it. */
+  joined: boolean;
 }
 
 export interface PagedResponse<T> {
@@ -125,6 +154,8 @@ export interface PagedResponse<T> {
   totalPages: number;
 }
 
+export type UpdateKind = "COMMENT" | "QUESTION" | "ANSWER" | "PICKUP" | "RESOLUTION" | "STATUS";
+
 export interface CommentItem {
   id: string;
   incidentId: string;
@@ -133,6 +164,34 @@ export interface CommentItem {
   commentText: string;
   isInternal: boolean;
   createdAt: string;
+  kind: UpdateKind;
+  authorRole: Role | null;
+}
+
+export interface PublicIssue {
+  id: string;
+  incidentNumber: string;
+  title: string;
+  description: string;
+  status: IncidentStatus;
+  priority: Priority;
+  category: Category;
+  serviceName: string | null;
+  handledBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updateCount: number;
+  /** How many people say they are affected, the reporter included. */
+  affectedCount: number;
+  affectedByMe: boolean;
+  updates: {
+    id: string;
+    kind: UpdateKind;
+    author: string;
+    authorRole: Role | null;
+    text: string;
+    createdAt: string;
+  }[];
 }
 
 export interface AuditLogItem {
@@ -164,6 +223,35 @@ export interface CategorySuggestion {
   matchedKeywords: string[];
 }
 
+/** "gemini" when the language model answered, "rules" for the built-in fallback. */
+export interface TriageSuggestion {
+  category: Category;
+  impact: Impact;
+  urgency: Urgency;
+  serviceId: string | null;
+  serviceName: string | null;
+  predictedPriority: Priority;
+  reason: string;
+  source: string;
+  /** False when the text is not about technology. */
+  itRelated: boolean;
+}
+
+export interface AssistantAdvice {
+  summary: string;
+  steps: string[];
+  source: string;
+  /** False when the text is not about technology; steps are then empty. */
+  itRelated: boolean;
+}
+
+export interface AssistantSummary {
+  summary: string;
+  source: string;
+}
+
+export type EscalationLevel = "NONE" | "TEAM_LEAD" | "ADMINISTRATOR" | "IT_MANAGER";
+
 export interface TechnicianItem {
   id: string;
   username: string;
@@ -172,6 +260,8 @@ export interface TechnicianItem {
   skills: Category[];
   activeTicketsCount: number;
   available: boolean;
+  maxActiveTickets: number;
+  teamLead: boolean;
 }
 
 export interface UserAccount {
@@ -184,6 +274,18 @@ export interface UserAccount {
   passwordSignIn: boolean;
   googleSignIn: boolean;
   createdAt: string;
+}
+
+export type ServiceHealth = "OPERATIONAL" | "DEGRADED" | "OUTAGE";
+
+/** Counts only, so every signed-in user can see it. */
+export interface ServiceStatus {
+  serviceId: string;
+  name: string;
+  criticality: Criticality;
+  status: ServiceHealth;
+  openTickets: number;
+  openMajorIncidents: number;
 }
 
 export interface PriorityPreview {
@@ -257,6 +359,27 @@ export interface Workload {
   resolvedThisWeek: number;
 }
 
+export type TrendRange = 7 | 30 | 90;
+
+/** Trends over the last 7, 30 or 90 UTC days; dates are ISO yyyy-mm-dd. */
+export interface Trends {
+  days: TrendRange;
+  from: string;
+  to: string;
+  daily: { date: string; created: number; resolved: number }[];
+  weeklyCompliance: {
+    weekStart: string;
+    resolvedCount: number;
+    withinSlaCount: number;
+    compliancePercent: number | null;
+  }[];
+  resolutionByCategory: { category: Category; resolvedCount: number; meanHours: number }[];
+  averageFirstResponseMinutes: number | null;
+  respondedCount: number;
+  escalationsByLevel: { level: Exclude<EscalationLevel, "NONE">; count: number }[];
+  selfHelp: { helped: number; notHelped: number };
+}
+
 export interface AssignmentConfig {
   activeStrategy: string;
 }
@@ -289,6 +412,16 @@ export interface IncidentQuery {
 
 const TOKEN_KEY = "servicedesk_jwt";
 const AUTH_PATHS = ["/auth/login", "/auth/google", "/auth/register"];
+
+/** Where the live-updates stream lives (Server-Sent Events). */
+export function liveEventsUrl(): string {
+  return `${API_BASE_URL}/events`;
+}
+
+/** The signed-in session's token, for the live-updates stream. */
+export function readAuthToken(): string | null {
+  return getAuthToken();
+}
 
 function getAuthToken(): string | null {
   if (typeof window === "undefined") {
@@ -366,7 +499,12 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     ) {
       window.dispatchEvent(new Event("servicedesk:session-expired"));
     }
-    throw new ApiError(errorDetail || `Request failed (${response.status})`, response.status);
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    throw new ApiError(
+      errorDetail || `Request failed (${response.status})`,
+      response.status,
+      response.status === 429 && retryAfter > 0 ? retryAfter : undefined
+    );
   }
 
   if (response.status === 204) return undefined as T;
@@ -399,6 +537,8 @@ export const api = {
   listTechnicians: () => apiClient<TechnicianItem[]>("/users/technicians"),
   updateTechnicianSkills: (id: string, skills: Category[]) =>
     apiClient<TechnicianItem>(`/users/${id}/skills`, put({ skills })),
+  updateCapacity: (id: string, maxActiveTickets: number, teamLead: boolean) =>
+    apiClient<TechnicianItem>(`/users/${id}/capacity`, put({ maxActiveTickets, teamLead })),
   listUsers: () => apiClient<UserAccount[]>("/users"),
   createUser: (data: {
     username: string;
@@ -409,16 +549,22 @@ export const api = {
   }) => apiClient<UserAccount>("/users", post(data)),
   updateUserRole: (id: string, role: Role) =>
     apiClient<UserAccount>(`/users/${id}/role`, put({ role })),
+  updateUserEmail: (id: string, email: string) =>
+    apiClient<UserAccount>(`/users/${id}/email`, put({ email })),
   setUserActive: (id: string, active: boolean) =>
     apiClient<UserAccount>(`/users/${id}/active`, put({ active })),
 
   // Catalogue
+  listCategories: () => apiClient<CategorySetting[]>("/catalog/categories"),
+  setCategoryActive: (category: Category, active: boolean) =>
+    apiClient<CategorySetting>(`/catalog/categories/${category}`, put({ active })),
   listServices: (includeRetired = false) =>
     apiClient<ItService[]>(`/catalog/services${includeRetired ? "?includeRetired=true" : ""}`),
   createService: (data: Omit<ItService, "id">) =>
     apiClient<ItService>("/catalog/services", post(data)),
   updateService: (id: string, data: Omit<ItService, "id">) =>
     apiClient<ItService>(`/catalog/services/${id}`, put(data)),
+  getServiceStatus: () => apiClient<ServiceStatus[]>("/catalog/service-status"),
   listSlaPolicies: () => apiClient<SlaPolicy[]>("/catalog/sla-policies"),
   previewPriority: (impact: Impact, urgency: Urgency, serviceId?: string) =>
     apiClient<PriorityPreview>(
@@ -438,7 +584,18 @@ export const api = {
     impact: Impact;
     urgency: Urgency;
     serviceId?: string;
+    aiSuggestionAccepted?: boolean;
   }) => apiClient<IncidentDetail>("/incidents", post(data)),
+
+  // Assistant (Gemini, or built-in rules when it isn't configured)
+  triage: (title: string, description: string) =>
+    apiClient<TriageSuggestion>("/incidents/triage", post({ title, description })),
+  selfHelp: (title: string, description: string) =>
+    apiClient<AssistantAdvice>("/incidents/self-help", post({ title, description })),
+  selfHelpFeedback: (helped: boolean) =>
+    apiClient<void>("/incidents/self-help/feedback", post({ helped })),
+  suggestFix: (id: string) => apiClient<AssistantAdvice>(`/incidents/${id}/ai/suggest-fix`, post()),
+  aiSummary: (id: string) => apiClient<AssistantSummary>(`/incidents/${id}/ai/summary`, post()),
 
   listIncidents: (params: IncidentQuery = {}) => {
     const query = new URLSearchParams();
@@ -460,6 +617,7 @@ export const api = {
       `/incidents/${id}/assign`,
       post(technicianId ? { technicianId } : {})
     ),
+  acknowledge: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/acknowledge`, post()),
   startWork: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/start`, post()),
   requestInfo: (id: string, question: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/request-info`, post({ question })),
@@ -469,10 +627,40 @@ export const api = {
     apiClient<IncidentDetail>(`/incidents/${id}/resolve`, post({ resolutionSummary })),
   closeIncident: (id: string, feedback?: { rating?: number; remarks?: string }) =>
     apiClient<IncidentDetail>(`/incidents/${id}/close`, post(feedback ?? {})),
+  reopenIncident: (id: string, reason: string) =>
+    apiClient<IncidentDetail>(`/incidents/${id}/reopen`, post({ reason })),
   cancelIncident: (id: string, reason: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/cancel`, post({ reason })),
+  linkIncident: (id: string, parentId: string) =>
+    apiClient<IncidentDetail>(`/incidents/${id}/link`, post({ parentId })),
+  unlinkIncident: (id: string) => apiClient<IncidentDetail>(`/incidents/${id}/unlink`, post()),
   overridePriority: (id: string, priority: Priority, remarks: string) =>
     apiClient<IncidentDetail>(`/incidents/${id}/priority`, put({ priority, remarks })),
+
+  // All issues (read-only, every signed-in user)
+  listIssues: (params: {
+    status?: IncidentStatus;
+    category?: Category;
+    serviceId?: string;
+    searchText?: string;
+    createdFrom?: string;
+    createdTo?: string;
+    page?: number;
+    size?: number;
+  }) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    }
+    const qs = query.toString();
+    return apiClient<PagedResponse<PublicIssue>>(`/issues${qs ? `?${qs}` : ""}`);
+  },
+  getIssue: (id: string) => apiClient<PublicIssue>(`/issues/${id}`),
+  markAffected: (id: string) => apiClient<PublicIssue>(`/issues/${id}/affected`, post()),
+  unmarkAffected: (id: string) =>
+    apiClient<PublicIssue>(`/issues/${id}/affected`, { method: "DELETE" }),
+  chat: (messages: { text: string; fromUser: boolean }[]) =>
+    apiClient<{ reply: string; source: string }>("/assistant/chat", post({ messages })),
 
   // Comments
   addComment: (id: string, commentText: string, isInternal: boolean) =>
@@ -490,6 +678,7 @@ export const api = {
   // Reports
   getReport: () => apiClient<Report>("/reports/overview"),
   getMyWorkload: () => apiClient<Workload>("/reports/my-workload"),
+  getTrends: (days: TrendRange) => apiClient<Trends>(`/reports/trends?days=${days}`),
 
   // Notifications
   getNotifications: () => apiClient<NotificationInbox>("/notifications"),

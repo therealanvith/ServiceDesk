@@ -74,7 +74,8 @@ Ensure the following tools are installed on your workstation:
 
    **Root account**: created on first start from `ROOT_USERNAME` / `ROOT_PASSWORD` in `.env`
    (see `.env.example`; at least 12 characters). Root can do everything an administrator can,
-   and is the only role that can grant or remove administrator access.
+   and is the only role that can change or demote an administrator. Administrators can promote
+   people to administrator.
 
    **Google sign-in**: create an OAuth 2.0 *Web application* client in Google Cloud Console,
    add `http://localhost:3000` to its *Authorized JavaScript origins*, put the client id in
@@ -82,8 +83,20 @@ Ensure the following tools are installed on your workstation:
    appears automatically. First-time Google users become employees; promote them from **Users**.
    `GOOGLE_ALLOWED_DOMAINS` optionally restricts sign-in to your organisation's domain.
 
+   The sign-up page offers "Sign up with Google" as well; every new account (either way) sends
+   administrators and root a "New user" notification so they can review its role.
+
+   **Assistant (optional)**: put a Google AI Studio key in `GEMINI_API_KEY` to have Gemini
+   suggest ticket classification, self-help steps, fixes and summaries. Without a key the
+   built-in rules answer, so every feature still works; each answer says which one produced it.
+
+   **Email (optional)**: put a Brevo API key in `BREVO_API_KEY` and a verified sender in
+   `MAIL_FROM_ADDRESS` to send notification emails. Without a key emails are only logged.
+   `APP_BASE_URL` is used for the links in emails.
+
    **Who sees what**: employees see the tickets they reported, technicians the tickets assigned
-   to them, administrators and root everything. Full matrix in [`docs/security.md`](docs/security.md).
+   to them, administrators and root everything. Everyone can browse **All issues** read-only,
+   without reporter names or internal notes. Full matrix in [`docs/security.md`](docs/security.md).
 
    > **Note on Existing Databases**: If you previously launched Docker containers before Flyway migration `V12`, you can immediately apply the `test` password to your running database:
    > ```bash
@@ -98,10 +111,10 @@ Ensure the following tools are installed on your workstation:
 
 ## Architecture & Implementation Overview
 
-The system is built across three fully implemented phases following strict Clean/Hexagonal Architecture:
+The system is built across four phases following strict Clean/Hexagonal Architecture:
 
 1. **Phase 1: Pure OOP Domain Core (Framework-Free)**
-   - **GoF State Pattern**: Encapsulates incident lifecycle (`ReportedState`, `AssignedState`, `InProgressState`, `PendingInfoState`, `ResolvedState`, `ClosedState`, `CancelledState`). Invalid transitions throw checked domain exceptions.
+   - **GoF State Pattern**: Encapsulates incident lifecycle (`ReportedState`, `AssignedState`, `AcknowledgedState`, `InProgressState`, `PendingInfoState`, `ResolvedState`, `ClosedState`, `CancelledState`). Invalid transitions throw domain exceptions (HTTP 409).
    - **GoF Strategy Pattern**: Dynamic automated technician dispatching with interchangeable strategies (`SkillMatchingStrategy`, `LeastLoadedStrategy`, `RoundRobinStrategy`).
    - **GoF Observer Pattern**: Incident event dispatcher decouples side-effects (`AuditLoggerListener`, `NotificationListener`).
    - **SLA & Priority Matrices**: Urgency $\times$ Impact matrix calculates priority ($P1$–$P4$); response and resolution deadlines pause dynamically in `PENDING_INFO` and recalculate on resumption.
@@ -109,7 +122,7 @@ The system is built across three fully implemented phases following strict Clean
 
 2. **Phase 2: Spring Boot 3 Backend & Persistence**
    - **Persistence Adapters**: Spring Data JPA repositories with domain entity $\leftrightarrow$ JPA entity mappers.
-   - **Database Migrations**: Flyway migrations (V1 baseline through V5 demo seed data) managing PostgreSQL tables, foreign keys, and indexes.
+   - **Database Migrations**: Flyway migrations (V1 baseline through V17; see `docs/database.md`) managing PostgreSQL tables, foreign keys, and indexes.
    - **Security & RBAC**: Stateless JWT authentication with role-based access control (`EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR`).
    - **REST API (`/api/v1`)**: Controllers for Auth, Incidents, Comments, Admin Strategy management, and SLA evaluation workers.
 
@@ -120,6 +133,21 @@ The system is built across three fully implemented phases following strict Clean
    - **Incident Lifecycle Actions**: Interactive modals for Request Info (pauses SLA), Provide Info (resumes SLA), Resolve, Reassign, Override Priority, and Close.
    - **Audit Timeline & Similar Tickets**: Real-time audit history and automated lexical similarity detection for recurring incidents.
    - **Admin Strategy Console**: Dynamic runtime switching of GoF technician assignment algorithms and capacity monitoring.
+
+4. **Phase 4: Service desk workflow, assistant and live updates**
+   - **Updates thread**: one chronological thread per ticket; comments plus entries the system writes for questions, answers, pick-up, resolution and status changes (`UpdateKind`).
+   - **All issues** (`/issues`): every signed-in user can search all issues read-only, with the reporter hidden and no internal notes.
+   - **Acknowledge step**: `ASSIGNED` → `ACKNOWLEDGED` → `IN_PROGRESS`; acknowledging meets the response target and tells the reporter.
+   - **Technician capacity** (Decorator): `CapacityAwareAssignmentStrategy` keeps every assignment strategy within each technician's open-ticket limit; manual over-assignment is refused with 409.
+   - **Escalation chain** (Chain of Responsibility): team lead, then administrators (with automatic reassignment), then the IT manager, one level per scheduler run.
+   - **Rate limiting**: token buckets per policy (sign-in, assistant, writes, reads) with 429 + `Retry-After`, and a per-username sign-in lockout.
+   - **Help desk assistant** (Adapter): Gemini behind the `IncidentAssistant` port for triage, self-help, fix suggestions and summaries, with a rule-based fallback.
+   - **Email and live updates**: Brevo email when configured; Server-Sent Events (`/api/v1/events`) refresh open pages and show toasts.
+   - **Major incidents**: link tickets under a main one; resolving it resolves them all. Service status (Operational / Degraded / Outage) from open tickets.
+   - **Board** (`/board`): drag-and-drop (and keyboard "Move to") columns Assigned, Acknowledged, In progress, Waiting on reporter, Resolved (last 7 days).
+   - **Trends**: 7 / 30 / 90-day charts of created vs resolved, SLA compliance, time to resolve, first response, escalations and self-help deflection.
+
+   Patterns, endpoints and schema: [`docs/design-patterns.md`](docs/design-patterns.md), [`docs/api-spec.md`](docs/api-spec.md), [`docs/database.md`](docs/database.md).
 
 ---
 

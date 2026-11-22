@@ -88,6 +88,11 @@ public record IncidentFilter(
     return scoped(null, reporter, null);
   }
 
+  /** The same criteria without any reporter, assignee or participant restriction. */
+  public IncidentFilter unscoped() {
+    return scoped(null, null, null);
+  }
+
   /** Only tickets assigned to this user. */
   public IncidentFilter withAssignee(UserId assignee) {
     return scoped(assignee, null, null);

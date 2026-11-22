@@ -13,4 +13,6 @@ public interface SpringDataIncidentCommentJpaRepository
   List<IncidentCommentEntity> findByIncidentIdOrderByCreatedAtAsc(UUID incidentId);
 
   List<IncidentCommentEntity> findByIncidentIdAndInternalFalseOrderByCreatedAtAsc(UUID incidentId);
+
+  long countByIncidentIdAndInternalFalse(UUID incidentId);
 }

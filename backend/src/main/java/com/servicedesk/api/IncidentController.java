@@ -2,6 +2,11 @@ package com.servicedesk.api;
 
 import com.servicedesk.api.dto.AddCommentRequest;
 import com.servicedesk.api.dto.AssignIncidentRequest;
+import com.servicedesk.api.dto.AssistantDtos.AdviceResponse;
+import com.servicedesk.api.dto.AssistantDtos.SelfHelpFeedbackRequest;
+import com.servicedesk.api.dto.AssistantDtos.SummaryResponse;
+import com.servicedesk.api.dto.AssistantDtos.TriageRequest;
+import com.servicedesk.api.dto.AssistantDtos.TriageResponse;
 import com.servicedesk.api.dto.AuditLogResponse;
 import com.servicedesk.api.dto.CancelIncidentRequest;
 import com.servicedesk.api.dto.CategorySuggestionResponse;
@@ -11,12 +16,15 @@ import com.servicedesk.api.dto.CreateIncidentRequest;
 import com.servicedesk.api.dto.IncidentDetailResponse;
 import com.servicedesk.api.dto.IncidentDraftRequest;
 import com.servicedesk.api.dto.IncidentSummaryResponse;
+import com.servicedesk.api.dto.MajorIncidentDtos.LinkIncidentRequest;
 import com.servicedesk.api.dto.OverridePriorityRequest;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.ProvideInfoRequest;
+import com.servicedesk.api.dto.ReopenIncidentRequest;
 import com.servicedesk.api.dto.RequestInfoRequest;
 import com.servicedesk.api.dto.ResolveIncidentRequest;
 import com.servicedesk.api.dto.SimilarIncidentResponse;
+import com.servicedesk.application.AssistantApplicationService;
 import com.servicedesk.application.IncidentApplicationService;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.IncidentStatus;
@@ -48,9 +56,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class IncidentController {
 
   private final IncidentApplicationService incidentService;
+  private final AssistantApplicationService assistant;
 
-  public IncidentController(IncidentApplicationService incidentService) {
+  public IncidentController(
+      IncidentApplicationService incidentService, AssistantApplicationService assistant) {
     this.incidentService = incidentService;
+    this.assistant = assistant;
   }
 
   @PostMapping
@@ -106,6 +117,38 @@ public class IncidentController {
     return ResponseEntity.ok(incidentService.suggestCategory(draft));
   }
 
+  /** Assistant: suggested category, impact, urgency and service for a ticket being written. */
+  @PostMapping("/triage")
+  public ResponseEntity<TriageResponse> triage(@Valid @RequestBody TriageRequest request) {
+    return ResponseEntity.ok(assistant.triage(request));
+  }
+
+  /** Assistant: steps to try before filing a ticket. */
+  @PostMapping("/self-help")
+  public ResponseEntity<AdviceResponse> selfHelp(@Valid @RequestBody TriageRequest request) {
+    return ResponseEntity.ok(assistant.selfHelp(request));
+  }
+
+  /** Records whether the self-help steps solved the problem (no ticket filed). */
+  @PostMapping("/self-help/feedback")
+  public ResponseEntity<Void> selfHelpFeedback(
+      @Valid @RequestBody SelfHelpFeedbackRequest request, Principal principal) {
+    assistant.recordSelfHelpFeedback(request.helped(), principal.getName());
+    return ResponseEntity.noContent().build();
+  }
+
+  /** A quick fix for a ticket the caller can see (their own, or one they work). */
+  @PostMapping("/{id}/ai/suggest-fix")
+  public ResponseEntity<AdviceResponse> suggestFix(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(assistant.suggestFix(id, principal.getName()));
+  }
+
+  @PostMapping("/{id}/ai/summary")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<SummaryResponse> summary(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(assistant.summarize(id, principal.getName()));
+  }
+
   /** Open tickets that look like the one being written (possible duplicates). */
   @PostMapping("/check-duplicates")
   public ResponseEntity<List<SimilarIncidentResponse>> checkDuplicates(
@@ -121,7 +164,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/assign")
-  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> assignIncident(
       @PathVariable UUID id,
       @RequestBody(required = false) AssignIncidentRequest request,
@@ -129,6 +172,13 @@ public class IncidentController {
     IncidentDetailResponse response =
         incidentService.assignIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
+  }
+
+  @PostMapping("/{id}/acknowledge")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> acknowledge(
+      @PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(incidentService.acknowledge(id, principal.getName()));
   }
 
   @PostMapping("/{id}/start")
@@ -175,6 +225,14 @@ public class IncidentController {
     return ResponseEntity.ok(response);
   }
 
+  @PostMapping("/{id}/reopen")
+  public ResponseEntity<IncidentDetailResponse> reopen(
+      @PathVariable UUID id,
+      @Valid @RequestBody ReopenIncidentRequest request,
+      Principal principal) {
+    return ResponseEntity.ok(incidentService.reopenIncident(id, request, principal.getName()));
+  }
+
   @PostMapping("/{id}/cancel")
   public ResponseEntity<IncidentDetailResponse> cancelIncident(
       @PathVariable UUID id,
@@ -183,6 +241,21 @@ public class IncidentController {
     IncidentDetailResponse response =
         incidentService.cancelIncident(id, request, principal.getName());
     return ResponseEntity.ok(response);
+  }
+
+  /** Links this ticket under a major incident. */
+  @PostMapping("/{id}/link")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> link(
+      @PathVariable UUID id, @Valid @RequestBody LinkIncidentRequest request, Principal principal) {
+    return ResponseEntity.ok(
+        incidentService.linkToParent(id, request.parentId(), principal.getName()));
+  }
+
+  @PostMapping("/{id}/unlink")
+  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<IncidentDetailResponse> unlink(@PathVariable UUID id, Principal principal) {
+    return ResponseEntity.ok(incidentService.unlinkFromParent(id, principal.getName()));
   }
 
   @PutMapping("/{id}/priority")

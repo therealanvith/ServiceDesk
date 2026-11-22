@@ -28,20 +28,22 @@
 - **Authentication**: Stateless JSON Web Token (JWT) with secure password hashing (`BCrypt`) and React `AuthContext` managing authorization state across the frontend.
 
 ### 2.2 Incident Lifecycle & State Machine
-Enforced strictly through the **GoF State Pattern** across seven distinct lifecycle states:
+Enforced strictly through the **GoF State Pattern** across eight distinct lifecycle states:
 ```
- [REPORTED] ────► [ASSIGNED] ────► [IN_PROGRESS] ◄────► [PENDING_INFO]
-     │                 │                 │                    (SLA Paused)
-     ▼                 │                 ▼
-[CANCELLED]            └───────────► [RESOLVED]
-                                         │
+ [REPORTED] ────► [ASSIGNED] ────► [ACKNOWLEDGED]
+     │                 │                 │
+     ▼                 └──(start)──┐     ▼
+[CANCELLED]                        └─► [IN_PROGRESS] ◄────► [PENDING_INFO]
+                                         │                    (SLA Paused)
                                          ▼
-                                      [CLOSED]
+                                     [RESOLVED] ────► [CLOSED]
 ```
+- `ACKNOWLEDGED`: the assignee accepted the ticket (meets the response target) but hasn't started; starting straight from `ASSIGNED` also counts as acknowledging. Reassigning returns a ticket to `ASSIGNED`.
+- Tickets linked under a major incident jump to `RESOLVED` from any open state when it is resolved (`resolveWithParent`).
 - **Lifecycle Guarantees**:
   - Direct or invalid transitions (e.g. `REPORTED` $\to$ `RESOLVED`) are programmatically forbidden and raise `InvalidStateTransitionException`.
   - Stored state in database is cleanly mapped back to domain state instances via factory mapping.
-  - Terminal states (`CLOSED`, `CANCELLED`) reject all subsequent modification attempts.
+  - `CANCELLED` rejects all transitions. Reporter/admin can reopen `RESOLVED` tickets or `CLOSED` tickets within 14 days with a reason, returning them to `IN_PROGRESS` and clearing resolution and feedback.
 
 ### 2.3 Intelligent Priority Calculation (Matrix Strategy)
 - Derives priority automatically from **Impact** (organizational scope: `LOW`, `MEDIUM`, `HIGH`) and **Urgency** (time criticality: `LOW`, `MEDIUM`, `HIGH`).
@@ -79,7 +81,8 @@ Pluggable technician allocation strategies implementing `AssignmentStrategy`:
   - `IncidentCreatedEvent`, `IncidentAssignedEvent`, `IncidentStatusChangedEvent`, `SlaBreachedEvent`.
 - Channel adapters:
   - **In-App Channel**: Writes unread notifications into `notifications` table, delivered to UI navbar badge.
-  - **Email Gateway**: Formats and logs outbound notifications (SMTP production-ready).
+  - **Email**: Brevo transactional API when `BREVO_API_KEY` is set; otherwise logged only (section 2.13).
+  - **Live**: pushed to open browser tabs over Server-Sent Events and shown as toasts.
 
 ### 2.8 Comprehensive Audit Trail & Collaboration
 - **Immutable Audit History**: Every state change, priority override, assignment, and cancellation writes an immutable row into `incident_audit_logs` storing `actor_id`, `action`, `old_value`, `new_value`, `remarks`, and exact timestamp.
@@ -93,17 +96,43 @@ Pluggable technician allocation strategies implementing `AssignmentStrategy`:
   - Technician Skill Management (Add/remove skills across categories, toggle technician active state).
   - Trigger instant SLA batch evaluation.
 
+### 2.10 Updates Thread & All Issues
+- **Updates thread**: each ticket has one chronological thread. People add comments; the system adds entries for questions (`QUESTION`), answers (`ANSWER`), pick-up (`PICKUP`), resolution (`RESOLUTION`) and other changes such as close, cancel or link (`STATUS`). Internal notes stay staff-only.
+- **All issues** (`/issues`, `GET /api/v1/issues`): every signed-in user can browse and search all issues read-only. The reporter shows as "Reporter"; no internal notes, emails or audit history. "This affects me too" starts a report linked to that issue.
+- **Google sign-up**: the sign-up page has "Sign up with Google"; every new account (password or Google) sends a `NEW_USER` notification to administrators and root.
+
+### 2.11 Capacity, Escalation Chain & Rate Limiting
+- **Capacity (Decorator)**: each technician has an open-ticket limit (default 5) and a team-lead flag, set on the Users page (`PUT /users/{id}/capacity`). `CapacityAwareAssignmentStrategy` wraps whichever strategy is active; manually assigning someone at their limit returns 409 (`TechnicianWorkloadExceededException`).
+- **Escalation (Chain of Responsibility)**: `TeamLeadEscalationHandler` → `AdministratorEscalationHandler` (auto-reassigns to a technician with room) → `ItManagerEscalationHandler` (P1/P2 resolution breach; root is the IT manager). One level per scheduler run, each with an `ESCALATED` audit entry.
+- **Rate limiting**: in-memory token buckets (`auth` 10/min per address, `ai` 20/min, `write` 120/min, `api` 600/min per user) answer 429 with `Retry-After`; five wrong passwords lock a username for 15 minutes.
+
+### 2.12 Help Desk Assistant (Gemini)
+- `IncidentAssistant` port with `GeminiAssistantAdapter` (when `GEMINI_API_KEY` is set) and `RuleBasedIncidentAssistant` as the fallback for a missing key, timeouts and unusable answers.
+- Endpoints: `POST /incidents/triage`, `/incidents/self-help`, `/incidents/self-help/feedback` for everyone; `/incidents/{id}/ai/suggest-fix` and `/incidents/{id}/ai/summary` for staff. Each answer says whether `gemini` or `rules` produced it.
+
+### 2.13 Email, Live Updates & Toasts
+- **Email**: `BrevoEmailChannelAdapter` sends through Brevo when `BREVO_API_KEY` is set (async, after commit); otherwise `EmailGatewayAdapter` only logs.
+- **Live updates**: `GET /api/v1/events` (Server-Sent Events, `LiveEventBroadcaster`) pushes `notification` and `incident-updated` events; ticket pages, the worklist and the inbox badge refresh themselves and notifications pop up as toasts.
+
+### 2.14 Major Incidents, Service Status, Board & Trends
+- **Major incidents**: administrators link tickets under a main ticket (`/link`, `/unlink`, one level deep). Resolving the main ticket resolves every open linked one with the same fix and tells their reporters.
+- **Service status** (`GET /api/v1/catalog/service-status`): Outage (open major incident or two open P1s), Degraded (any open P1/P2 or two open tickets), otherwise Operational.
+- **Board** (`/board`): columns Assigned, Acknowledged, In progress, Waiting on reporter and Resolved (last 7 days); cards move by drag and drop or the keyboard "Move to" control.
+- **Trends** (`GET /api/v1/reports/trends?days=7|30|90`): daily created vs resolved, weekly SLA compliance, mean time to resolve by category, first-response minutes, escalations by level and self-help deflection.
+
 ---
 
 ## 3. Gang of Four (GoF) & Architectural Patterns Summary
 
 | Pattern | Type | Project Implementation | Key Classes |
 | :--- | :--- | :--- | :--- |
-| **State** | Behavioral | Strict incident lifecycle management | `IncidentState`, `ReportedState`, `InProgressState`, `PendingInfoState`, `ResolvedState`, etc. |
+| **State** | Behavioral | Strict incident lifecycle management, including acknowledge and resolve-with-parent | `IncidentState`, `ReportedState`, `AcknowledgedState`, `InProgressState`, `PendingInfoState`, `ResolvedState`, etc. |
+| **Chain of Responsibility** | Behavioral | Escalation one level at a time | `EscalationHandler`, `TeamLeadEscalationHandler`, `AdministratorEscalationHandler`, `ItManagerEscalationHandler`, `EscalationChain` |
+| **Decorator** | Structural | Capacity limits for any assignment strategy | `CapacityAwareAssignmentStrategy` |
 | **Strategy** | Behavioral | Pluggable assignment, priority calculation, similarity scoring | `AssignmentStrategy`, `PriorityCalculationStrategy`, `SimilarityStrategy`, `JaccardSimilarityStrategy` |
-| **Observer** | Behavioral | Decoupled side effects for audit logging & notifications | `DomainEventPublisher`, `DomainEventListener`, `DomainEvent` |
+| **Observer** | Behavioral | Decoupled side effects for audit logging & notifications; live updates to open browser tabs | `DomainEventPublisher`, `DomainEventListener`, `DomainEvent`, `LiveEventBroadcaster` |
 | **Factory** | Creational | Encapsulated aggregate construction with SLAs & state | `IncidentFactory` |
-| **Adapter (Ports & Adapters)** | Structural | Database persistence & multi-channel notification decoupling | `JpaIncidentRepositoryAdapter`, `InAppNotificationChannelAdapter`, `EmailGatewayAdapter` |
+| **Adapter (Ports & Adapters)** | Structural | Database persistence, multi-channel notifications, Gemini assistant | `JpaIncidentRepositoryAdapter`, `InAppNotificationChannelAdapter`, `BrevoEmailChannelAdapter`, `LiveNotificationChannelAdapter`, `GeminiAssistantAdapter` |
 | **Repository** | Architectural | Domain persistence abstraction | `IncidentRepository`, `UserRepository`, `AuditLogRepository` |
 
 ---

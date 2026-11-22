@@ -94,7 +94,8 @@ message queue without touching the domain.
 - The JVM's start-up time and memory use are higher than Node's or Go's.
 - Reports are computed in the application from all tickets. That's fine for thousands of
   tickets, but SQL aggregates would be needed at larger scale (see §9).
-- The JWT in `localStorage` and the lack of login rate limiting are documented in `security.md`.
+- The JWT in `localStorage` and the per-instance, in-memory rate limits are documented in
+  `security.md`.
 
 ## 8. How the stack supports object-oriented design
 
@@ -123,6 +124,8 @@ The design patterns are catalogued in `design-patterns.md`.
 4. **Notifications.** Publish events to a queue (RabbitMQ or Kafka) and let workers send email
    or push messages; the `NotificationChannel` interface already isolates this.
 5. **Assignment state.** Round-robin and the active strategy are held in memory today. Move them
-   to the database or Redis so every instance agrees.
+   to the database or Redis so every instance agrees. The same applies to rate limits and login
+   lockouts: swap `InMemoryRateLimiter` for a Redis-backed `RateLimiter` (for example Bucket4j)
+   so every instance counts the same requests.
 6. **Edge.** Put a CDN in front of the frontend, rate limiting and TLS at the gateway, and
    observability (metrics, traces) through Spring Boot Actuator and OpenTelemetry.

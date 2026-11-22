@@ -11,8 +11,11 @@ import com.servicedesk.domain.exception.UnauthorizedOperationException;
 import com.servicedesk.domain.exception.UserNotFoundException;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.IncidentStatus;
+import com.servicedesk.domain.notification.NotificationChannel;
+import com.servicedesk.domain.notification.NotificationMessage;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.UserId;
+import com.servicedesk.infrastructure.live.LiveEventBroadcaster;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserSkillEntity;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
@@ -41,6 +44,9 @@ public class UserApplicationService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final GoogleIdTokenVerifier googleVerifier;
+  private final List<NotificationChannel> notificationChannels;
+  private final LoginAttemptGuard loginAttempts;
+  private final LiveEventBroadcaster liveEvents;
   private final Clock clock;
   private boolean registrationEnabled = true;
 
@@ -66,7 +72,29 @@ public class UserApplicationService {
             Role.EMPLOYEE,
             request.password());
     UserEntity user = userJpaRepository.findById(created.id()).orElseThrow();
+    announceNewUser(user, "signed up");
     return issueSession(user);
+  }
+
+  /** Tells administrators someone joined so they can review the new account's role. */
+  private void announceNewUser(UserEntity user, String how) {
+    for (Role role : List.of(Role.ADMINISTRATOR, Role.ROOT)) {
+      for (UserEntity admin : userJpaRepository.findByRoleAndActiveTrue(role)) {
+        NotificationDispatch.afterCommit(
+            notificationChannels,
+            NotificationMessage.of(
+                UserId.of(admin.getId()),
+                null,
+                "NEW_USER",
+                "New user: " + user.getFullName(),
+                user.getFullName()
+                    + " ("
+                    + user.getUsername()
+                    + ") "
+                    + how
+                    + " and starts as an employee. Change their role on the Users page if needed."));
+      }
+    }
   }
 
   public UserApplicationService(
@@ -75,7 +103,13 @@ public class UserApplicationService {
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
       GoogleIdTokenVerifier googleVerifier,
-      Clock clock) {
+      Clock clock,
+      List<NotificationChannel> notificationChannels,
+      LoginAttemptGuard loginAttempts,
+      LiveEventBroadcaster liveEvents) {
+    this.liveEvents = liveEvents;
+    this.loginAttempts = loginAttempts;
+    this.notificationChannels = notificationChannels;
     this.userJpaRepository = userJpaRepository;
     this.incidentJpaRepository = incidentJpaRepository;
     this.passwordEncoder = passwordEncoder;
@@ -86,16 +120,19 @@ public class UserApplicationService {
 
   @Transactional(readOnly = true)
   public AuthResponse login(LoginRequest request) {
-    UserEntity user =
-        userJpaRepository
-            .findByUsername(request.username())
-            .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
-
-    if (!user.isActive()
-        || user.getPasswordHash() == null
-        || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+    // A locked username gets the same answer as a wrong password, so lockouts leak nothing.
+    if (loginAttempts.isLocked(request.username())) {
       throw new BadCredentialsException("Invalid username or password");
     }
+    UserEntity user = userJpaRepository.findByUsername(request.username()).orElse(null);
+    if (user == null
+        || !user.isActive()
+        || user.getPasswordHash() == null
+        || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+      loginAttempts.recordFailure(request.username());
+      throw new BadCredentialsException("Invalid username or password");
+    }
+    loginAttempts.recordSuccess(request.username());
     return issueSession(user);
   }
 
@@ -126,7 +163,8 @@ public class UserApplicationService {
       if (!user.isActive()) {
         throw new BadCredentialsException("Your account has been disabled.");
       }
-      return issueSession(user);
+      user.setAvatar(identity.picture());
+      return issueSession(userJpaRepository.save(user));
     }
 
     if (userJpaRepository.findByEmailIgnoreCase(identity.email()).isPresent()) {
@@ -153,7 +191,10 @@ public class UserApplicationService {
             clock.instant(),
             clock.instant());
     created.setGoogleSub(identity.subject());
-    return issueSession(userJpaRepository.save(created));
+    created.setAvatar(identity.picture());
+    UserEntity saved = userJpaRepository.save(created);
+    announceNewUser(saved, "signed in with Google for the first time");
+    return issueSession(saved);
   }
 
   /** Links a Google identity to the signed-in account; proves ownership of both. */
@@ -175,6 +216,7 @@ public class UserApplicationService {
                   "This Google account is already linked to another user");
             });
     user.setGoogleSub(identity.subject());
+    user.setAvatar(identity.picture());
     user.setUpdatedAt(clock.instant());
     return toProfileResponse(userJpaRepository.save(user));
   }
@@ -213,7 +255,7 @@ public class UserApplicationService {
   }
 
   public UserAccountResponse createUser(CreateUserRequest request, String actorUsername) {
-    requireMayGrant(actorRole(actorUsername), request.role());
+    requireMayGrant(request.role());
     UserAccountResponse created =
         createAccount(
             request.username(),
@@ -258,7 +300,7 @@ public class UserApplicationService {
 
   public UserAccountResponse updateRole(UUID userId, Role role, String actorUsername) {
     UserEntity user = loadManageableUser(userId, actorUsername);
-    requireMayGrant(actorRole(actorUsername), role);
+    requireMayGrant(role);
     if (user.getRole() == Role.TECHNICIAN && role != Role.TECHNICIAN) {
       // Skills only mean something for technicians.
       user.getSkills().clear();
@@ -268,11 +310,34 @@ public class UserApplicationService {
     return toAccountResponse(userJpaRepository.save(user));
   }
 
+  /** Sets the address notification emails go to; blank removes it. */
+  public UserAccountResponse updateEmail(UUID userId, String email, String actorUsername) {
+    UserEntity user = loadManageableUser(userId, actorUsername);
+    String normalized = email == null || email.isBlank() ? null : email.trim();
+    if (normalized != null) {
+      userJpaRepository
+          .findByEmailIgnoreCase(normalized)
+          .filter(other -> !other.getId().equals(user.getId()))
+          .ifPresent(
+              other -> {
+                throw new IllegalArgumentException("Another account already uses this email");
+              });
+    }
+    user.setEmail(normalized);
+    user.setUpdatedAt(clock.instant());
+    return toAccountResponse(userJpaRepository.save(user));
+  }
+
   public UserAccountResponse setActive(UUID userId, boolean active, String actorUsername) {
     UserEntity user = loadManageableUser(userId, actorUsername);
     user.setActive(active);
     user.setUpdatedAt(clock.instant());
-    return toAccountResponse(userJpaRepository.save(user));
+    UserAccountResponse saved = toAccountResponse(userJpaRepository.save(user));
+    if (!active) {
+      // A deactivated account stops receiving live updates straight away.
+      liveEvents.disconnect(user.getId());
+    }
+    return saved;
   }
 
   private UserEntity loadManageableUser(UUID userId, String actorUsername) {
@@ -290,15 +355,12 @@ public class UserApplicationService {
   }
 
   /**
-   * Administrators manage employees and technicians; only root can create or promote
-   * administrators, and nobody can create a second root.
+   * Administrators and root can create or promote any role except root: nobody can create a second
+   * root. Once someone is an administrator only root can change or demote them.
    */
-  private static void requireMayGrant(Role actor, Role target) {
+  private static void requireMayGrant(Role target) {
     if (target == Role.ROOT) {
       throw new IllegalArgumentException("There can only be one root account");
-    }
-    if (target == Role.ADMINISTRATOR && actor != Role.ROOT) {
-      throw new UnauthorizedOperationException("Only root can grant administrator access");
     }
   }
 
@@ -391,6 +453,21 @@ public class UserApplicationService {
     return toTechnicianResponse(saved);
   }
 
+  /** Sets how many open tickets a technician may hold and whether they lead the team. */
+  public TechnicianResponse updateTechnicianCapacity(
+      UUID technicianId, int maxActiveTickets, boolean teamLead) {
+    UserEntity user =
+        userJpaRepository
+            .findById(technicianId)
+            .orElseThrow(() -> new UserNotFoundException("Technician not found: " + technicianId));
+    if (user.getRole() != Role.TECHNICIAN) {
+      throw new IllegalArgumentException("Capacity can only be set for technicians");
+    }
+    user.setMaxActiveTickets(maxActiveTickets);
+    user.setTeamLead(teamLead);
+    return toTechnicianResponse(userJpaRepository.save(user));
+  }
+
   private UserProfileResponse toProfileResponse(UserEntity user) {
     Set<Category> skills =
         user.getSkills().stream().map(UserSkillEntity::getCategory).collect(Collectors.toSet());
@@ -403,7 +480,9 @@ public class UserApplicationService {
         skills,
         user.isMustChangePassword(),
         user.getGoogleSub() != null,
-        user.getPasswordHash() != null);
+        user.getPasswordHash() != null,
+        user.getRole() == Role.TECHNICIAN && user.isTeamLead(),
+        user.getAvatar());
   }
 
   private TechnicianResponse toTechnicianResponse(UserEntity tech) {
@@ -412,7 +491,7 @@ public class UserApplicationService {
 
     int activeTickets =
         incidentJpaRepository.countByAssigneeIdAndStatusNotIn(
-            tech.getId(), Set.of(IncidentStatus.CLOSED, IncidentStatus.CANCELLED));
+            tech.getId(), IncidentStatus.notWorkload());
 
     return new TechnicianResponse(
         tech.getId(),
@@ -421,6 +500,8 @@ public class UserApplicationService {
         tech.getEmail(),
         skills,
         activeTickets,
-        tech.isActive());
+        tech.isActive(),
+        tech.getMaxActiveTickets(),
+        tech.isTeamLead());
   }
 }

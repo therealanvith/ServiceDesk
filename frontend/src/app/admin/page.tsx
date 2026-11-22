@@ -1,5 +1,6 @@
 "use client";
 
+import { CategorySettings } from "@/components/settings/CategorySettings";
 import { ServiceCatalogSettings } from "@/components/settings/ServiceCatalogSettings";
 import { SlaPolicySettings } from "@/components/settings/SlaPolicySettings";
 import { useAuth } from "@/context/AuthContext";
@@ -33,6 +34,7 @@ const STRATEGIES = [
 ] as const;
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[];
+const LIMIT_OPTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20];
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -154,6 +156,29 @@ export default function AdminPage() {
     }
   };
 
+  // Ticket limit and team-lead flag share the per-technician lock with skills.
+  const handleCapacity = async (
+    tech: TechnicianItem,
+    maxActiveTickets: number,
+    teamLead: boolean
+  ) => {
+    if (pendingSkills.has(tech.id)) return;
+    skillSaves.current += 1;
+    setPendingSkills((prev) => new Set(prev).add(tech.id));
+    try {
+      const updated = await api.updateCapacity(tech.id, maxActiveTickets, teamLead);
+      setTechnicians((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update the ticket limit");
+    } finally {
+      setPendingSkills((prev) => {
+        const next = new Set(prev);
+        next.delete(tech.id);
+        return next;
+      });
+    }
+  };
+
   if (authLoading || (isAdmin(user?.role) && loading)) {
     return <output className="empty">Loading settings…</output>;
   }
@@ -241,6 +266,17 @@ export default function AdminPage() {
 
       <section className="settings-section">
         <div>
+          <h2>Incident categories</h2>
+          <p>
+            Which categories reporters can pick. Switching one off hides it from the report form;
+            tickets already filed under it keep it.
+          </p>
+        </div>
+        <CategorySettings onError={setError} />
+      </section>
+
+      <section className="settings-section">
+        <div>
           <h2>IT services</h2>
           <p>
             What people can report problems against. Criticality raises or lowers the priority of
@@ -310,8 +346,9 @@ export default function AdminPage() {
               <thead>
                 <tr>
                   <th scope="col">Name</th>
-                  <th scope="col">Open</th>
+                  <th scope="col">Open / limit</th>
                   <th scope="col">Skills</th>
+                  <th scope="col">Team lead</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,7 +358,34 @@ export default function AdminPage() {
                       <span style={{ fontWeight: 550 }}>{tech.fullName}</span>
                       <span className="props-sub mono">{tech.username}</span>
                     </td>
-                    <td className="load">{tech.activeTicketsCount}</td>
+                    <td className="load col-nowrap">
+                      <span
+                        className={
+                          tech.activeTicketsCount >= tech.maxActiveTickets ? "text-red" : undefined
+                        }
+                      >
+                        {tech.activeTicketsCount}
+                      </span>{" "}
+                      /{" "}
+                      <select
+                        className="filter-select"
+                        aria-label={`Ticket limit for ${tech.fullName}`}
+                        value={tech.maxActiveTickets}
+                        disabled={pendingSkills.has(tech.id)}
+                        onChange={(e) =>
+                          handleCapacity(tech, Number(e.target.value), tech.teamLead)
+                        }
+                      >
+                        {LIMIT_OPTIONS.includes(tech.maxActiveTickets) ? null : (
+                          <option value={tech.maxActiveTickets}>{tech.maxActiveTickets}</option>
+                        )}
+                        {LIMIT_OPTIONS.map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <div className="row" style={{ gap: 4 }}>
                         {ALL_CATEGORIES.map((cat) => (
@@ -337,6 +401,19 @@ export default function AdminPage() {
                           </button>
                         ))}
                       </div>
+                    </td>
+                    <td>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={tech.teamLead}
+                          disabled={pendingSkills.has(tech.id)}
+                          onChange={(e) =>
+                            handleCapacity(tech, tech.maxActiveTickets, e.target.checked)
+                          }
+                        />
+                        <span className="sr-only">{tech.fullName} is a team lead</span>
+                      </label>
                     </td>
                   </tr>
                 ))}

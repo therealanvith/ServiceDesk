@@ -19,6 +19,15 @@ server:
   port: -1
 
 app:
+  # Generous limits so ordinary tests are never throttled; RateLimitingTest sets its own.
+  rate-limit:
+    auth-per-minute: 10000
+    ai-per-minute: 10000
+    write-per-minute: 10000
+    api-per-minute: 10000
+    events-per-minute: 10000
+    login:
+      max-failures: 1000
   security:
     jwt-secret: test_secret_key_minimum_thirty_two_characters_long_for_unit_tests
     cors:

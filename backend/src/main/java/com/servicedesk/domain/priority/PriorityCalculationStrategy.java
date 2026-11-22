@@ -19,4 +19,13 @@ public interface PriorityCalculationStrategy {
       Impact impact, Urgency urgency, BusinessCriticality criticality) {
     return calculatePriority(impact, urgency);
   }
+
+  /**
+   * Also takes the number of people affected. Strategies that ignore it inherit this default, so
+   * existing strategies keep working unchanged.
+   */
+  default Priority calculatePriority(
+      Impact impact, Urgency urgency, BusinessCriticality criticality, int affectedUsers) {
+    return calculatePriority(impact, urgency, criticality);
+  }
 }

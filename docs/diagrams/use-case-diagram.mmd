@@ -22,6 +22,15 @@ graph LR
 
         UC_ViewAll["View Global Incident Overview"]
         UC_OverridePrio["Override Incident Priority"]
+
+        UC_Acknowledge["Acknowledge Assigned Ticket"]
+        UC_Board["Move Tickets on the Board (drag / Move to)"]
+        UC_Updates["Follow the Updates Thread"]
+        UC_AllIssues["Browse All Issues (read-only)"]
+        UC_AffectsMe["Report 'This affects me too'"]
+        UC_LinkMajor["Link / Unlink Major Incident"]
+        UC_ServiceStatus["View Service Status"]
+        UC_Live["Receive Live Updates & Toasts"]
     end
 
     subgraph "Intelligence & Automation Subsystem"
@@ -29,12 +38,26 @@ graph LR
         UC_AutoAssign["Auto-Assign Technician (RoundRobin / LeastLoaded / Skill)"]
         UC_DetectDup["Detect Similar / Duplicate Incidents (Jaccard)"]
         UC_CheckSLA["Evaluate SLA Deadlines & Escalation"]
+        UC_Escalate["Escalation Chain (Team lead -> Admin + reassign -> IT manager)"]
+        UC_CapacityCheck["Respect Technician Capacity"]
+        UC_ResolveChildren["Resolve Linked Tickets with Major Incident"]
+        UC_Triage["Assistant Triage (Gemini / rules)"]
+        UC_SelfHelp["Self-Help Before Filing + Feedback"]
+        UC_AiStaff["Suggest Fix / Summarise Ticket"]
+        UC_Email["Send Email (Brevo)"]
     end
 
     subgraph "Administration & Auditing Subsystem"
         UC_ConfigStrategy["Configure Active Assignment Strategy"]
         UC_ManageUsers["Manage Technicians & Skills"]
         UC_ViewAudit["View Chronological Audit Trail"]
+        UC_Capacity["Set Capacity & Team Lead"]
+        UC_ReviewNewUser["Review New Sign-ups"]
+        UC_Trends["View Trends (7 / 30 / 90 days)"]
+    end
+
+    subgraph "Access"
+        UC_SignUp["Sign Up (password or Google)"]
     end
 
     %% Employee interactions
@@ -68,3 +91,37 @@ graph LR
     UC_Report -.->|includes| UC_DetectDup
     UC_Report -.->|triggers| UC_AutoAssign
     Cron --> UC_CheckSLA
+
+    %% Added with the acknowledge step, assistant, live updates and major incidents
+    Emp --> UC_SignUp
+    Emp --> UC_AllIssues
+    Emp --> UC_AffectsMe
+    Emp --> UC_Updates
+    Emp --> UC_ServiceStatus
+    Emp --> UC_SelfHelp
+    Emp --> UC_Live
+
+    Tech --> UC_Acknowledge
+    Tech --> UC_Board
+    Tech --> UC_Updates
+    Tech --> UC_AiStaff
+    Tech --> UC_AllIssues
+    Tech --> UC_Live
+
+    Admin --> UC_LinkMajor
+    Admin --> UC_Capacity
+    Admin --> UC_ReviewNewUser
+    Admin --> UC_Trends
+    Admin --> UC_Board
+    Admin --> UC_AiStaff
+
+    UC_Report -.->|includes| UC_Triage
+    UC_SelfHelp -.->|extends| UC_Report
+    UC_AffectsMe -.->|extends| UC_Report
+    UC_AutoAssign -.->|includes| UC_CapacityCheck
+    UC_CheckSLA -.->|includes| UC_Escalate
+    UC_Escalate -.->|includes| UC_CapacityCheck
+    UC_Resolve -.->|includes| UC_ResolveChildren
+    UC_SignUp -.->|triggers| UC_ReviewNewUser
+    UC_Updates -.->|notifies by| UC_Email
+    UC_Updates -.->|notifies by| UC_Live

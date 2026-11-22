@@ -1,11 +1,14 @@
 package com.servicedesk.api.dto;
 
+import com.servicedesk.api.dto.MajorIncidentDtos.LinkedIncidentResponse;
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.IncidentStatus;
 import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.priority.Priority;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record IncidentDetailResponse(
@@ -28,4 +31,11 @@ public record IncidentDetailResponse(
     Instant respondedAt,
     Instant escalatedAt,
     Integer feedbackRating,
-    String feedbackComment) {}
+    String feedbackComment,
+    EscalationLevel escalationLevel,
+    /** The major incident this ticket is part of, if any. */
+    LinkedIncidentResponse parentIncident,
+    /** Tickets linked under this one when it is a major incident. */
+    List<LinkedIncidentResponse> childIncidents,
+    Instant resolvedAt,
+    Instant closedAt) {}

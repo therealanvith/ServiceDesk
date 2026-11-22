@@ -2,6 +2,7 @@ package com.servicedesk.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.servicedesk.domain.exception.InvalidStateTransitionException;
@@ -150,11 +151,48 @@ class IncidentStateTest {
     incident.close(reporterId);
     assertEquals(IncidentStatus.CLOSED, incident.getStatus());
 
-    // CLOSED is immutable
+    // CLOSED still rejects actions other than reopening
     assertThrows(InvalidStateTransitionException.class, () -> incident.assign(tech2, reporterId));
     assertThrows(InvalidStateTransitionException.class, () -> incident.startWork(tech1));
     assertThrows(InvalidStateTransitionException.class, () -> incident.resolve("New", tech1));
     assertThrows(
         InvalidStateTransitionException.class, () -> incident.cancel("Reason", reporterId));
+  }
+
+  @Test
+  @DisplayName("A closed incident can be reopened within 14 days, not after")
+  void testReopenClosedIncidentWithinWindow() {
+    Incident incident = createSampleIncident();
+    incident.assign(tech1, reporterId);
+    incident.startWork(tech1);
+    incident.resolve("Done", tech1);
+    incident.close(reporterId);
+    incident.recordFeedback(2, "Didn't last");
+
+    incident.reopen(reporterId);
+    assertEquals(IncidentStatus.IN_PROGRESS, incident.getStatus());
+    assertNull(incident.getClosedAt());
+    assertNull(incident.getResolvedAt());
+    assertNull(incident.getResolutionSummary());
+    assertNull(incident.getFeedbackRating());
+    assertNull(incident.getFeedbackComment());
+
+    Incident old = createSampleIncident();
+    old.assign(tech1, reporterId);
+    old.startWork(tech1);
+    old.resolve("Done", tech1);
+    old.close(reporterId);
+    Instant cutoff = fixedClock.instant().minus(java.time.Duration.ofDays(14));
+    old.setClosedAt(cutoff.minusNanos(1));
+    assertThrows(InvalidStateTransitionException.class, () -> old.reopen(reporterId));
+    assertEquals(IncidentStatus.CLOSED, old.getStatus());
+    assertEquals("Done", old.getResolutionSummary());
+
+    old.setClosedAt(null);
+    assertThrows(InvalidStateTransitionException.class, () -> old.reopen(reporterId));
+
+    old.setClosedAt(cutoff);
+    old.reopen(reporterId);
+    assertEquals(IncidentStatus.IN_PROGRESS, old.getStatus());
   }
 }

@@ -90,7 +90,7 @@ class UserAccessPersistenceTest {
   }
 
   @Test
-  void adminsManageStaffButOnlyRootGrantsAdmin() throws Exception {
+  void adminsManageStaffAndGrantAdminButOnlyRootChangesAdmins() throws Exception {
     users.saveAndFlush(
         new UserEntity(
             UUID.randomUUID(),
@@ -122,12 +122,6 @@ class UserAccessPersistenceTest {
     mvc.perform(
             put("/api/v1/users/" + employee.getId() + "/role")
                 .with(user("boss").roles("ADMINISTRATOR"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"role\":\"ADMINISTRATOR\"}"))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            put("/api/v1/users/" + employee.getId() + "/role")
-                .with(user("root").roles("ROOT"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"role\":\"ADMINISTRATOR\"}"))
         .andExpect(status().isOk());

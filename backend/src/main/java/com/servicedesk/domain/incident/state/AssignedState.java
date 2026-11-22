@@ -9,6 +9,13 @@ import java.util.Objects;
 public class AssignedState implements IncidentState {
 
   @Override
+  public void acknowledge(Incident context, UserId technicianId) {
+    Objects.requireNonNull(context, "Incident context must not be null");
+    context.transitionTo(new AcknowledgedState());
+  }
+
+  /** Starting straight away also counts as acknowledging the ticket. */
+  @Override
   public void startWork(Incident context, UserId technicianId) {
     Objects.requireNonNull(context, "Incident context must not be null");
     context.transitionTo(new InProgressState());
@@ -26,6 +33,11 @@ public class AssignedState implements IncidentState {
   public void cancel(Incident context, String reason, UserId actorId) {
     Objects.requireNonNull(context, "Incident context must not be null");
     context.transitionTo(new CancelledState());
+  }
+
+  @Override
+  public void resolveWithParent(Incident context, String resolutionSummary) {
+    ParentResolution.apply(context, resolutionSummary);
   }
 
   @Override

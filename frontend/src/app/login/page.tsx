@@ -3,6 +3,7 @@
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { useAuth } from "@/context/AuthContext";
 import { type AuthConfig, api } from "@/lib/apiClient";
+import { useCooldown } from "@/lib/useCooldown";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<AuthConfig | null>(null);
+  const cooldown = useCooldown();
 
   useEffect(() => {
     if (user) router.replace("/");
@@ -35,6 +37,7 @@ export default function LoginPage() {
       await action();
       router.replace("/");
     } catch (err: unknown) {
+      cooldown.trigger(err);
       setError(err instanceof Error ? err.message : "Sign-in failed");
       setPassword("");
     } finally {
@@ -92,8 +95,16 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
-        <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-          {submitting ? "Signing in…" : "Sign in"}
+        <button
+          type="submit"
+          className="btn btn-primary btn-block"
+          disabled={submitting || cooldown.coolingDown}
+        >
+          {submitting
+            ? "Signing in…"
+            : cooldown.coolingDown
+              ? `Try again in ${cooldown.secondsLeft} s`
+              : "Sign in"}
         </button>
       </form>
 

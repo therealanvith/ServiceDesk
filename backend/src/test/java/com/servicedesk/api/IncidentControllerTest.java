@@ -14,7 +14,9 @@ import com.servicedesk.api.dto.IncidentDetailResponse;
 import com.servicedesk.api.dto.PagedResponse;
 import com.servicedesk.api.dto.SlaWindowResponse;
 import com.servicedesk.api.dto.UserSummaryResponse;
+import com.servicedesk.application.AssistantApplicationService;
 import com.servicedesk.application.IncidentApplicationService;
+import com.servicedesk.domain.escalation.EscalationLevel;
 import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.IncidentStatus;
@@ -47,6 +49,7 @@ class IncidentControllerTest {
   @Autowired private ObjectMapper objectMapper;
 
   @MockBean private IncidentApplicationService incidentService;
+  @MockBean private AssistantApplicationService assistantService;
   @MockBean private JwtTokenProvider jwtTokenProvider;
   @MockBean private DomainUserDetailsService userDetailsService;
 
@@ -91,6 +94,11 @@ class IncidentControllerTest {
             null,
             null,
             null,
+            null,
+            null,
+            EscalationLevel.NONE,
+            null,
+            java.util.List.of(),
             null,
             null);
 

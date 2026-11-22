@@ -1,5 +1,7 @@
 package com.servicedesk.domain.incident;
 
+import com.servicedesk.domain.escalation.EscalationLevel;
+import com.servicedesk.domain.exception.DomainValidationException;
 import com.servicedesk.domain.incident.state.IncidentState;
 import com.servicedesk.domain.incident.state.ReportedState;
 import com.servicedesk.domain.priority.Priority;
@@ -35,6 +37,9 @@ public class Incident {
   private UUID affectedServiceId;
   private Instant respondedAt;
   private Instant escalatedAt;
+  private EscalationLevel escalationLevel = EscalationLevel.NONE;
+  private IncidentId parentIncidentId;
+  private Priority priorityAtBreach;
   private Integer feedbackRating;
   private String feedbackComment;
   private Clock clock;
@@ -77,6 +82,44 @@ public class Incident {
 
   public void assign(UserId technicianId, UserId actorId) {
     this.currentState.assign(this, technicianId, actorId);
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  public void resolveWithParent(String resolutionSummary) {
+    this.currentState.resolveWithParent(this, resolutionSummary);
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  /** Priority when the resolution target was first missed (before the automatic bump), or null. */
+  public Priority getPriorityAtBreach() {
+    return priorityAtBreach;
+  }
+
+  public void restorePriorityAtBreach(Priority priority) {
+    this.priorityAtBreach = priority;
+  }
+
+  /** The major incident this ticket is part of, or null. */
+  public IncidentId getParentIncidentId() {
+    return parentIncidentId;
+  }
+
+  /** Links this ticket under a major incident (null unlinks it). */
+  public void linkToParent(IncidentId parentId) {
+    if (parentId != null && parentId.equals(this.id)) {
+      throw new DomainValidationException("A ticket can't be linked to itself");
+    }
+    this.parentIncidentId = parentId;
+    this.updatedAt = getCurrentClockTime();
+  }
+
+  /** Restores the link when loading from storage, without touching the update time. */
+  public void restoreParent(IncidentId parentId) {
+    this.parentIncidentId = parentId;
+  }
+
+  public void acknowledge(UserId technicianId) {
+    this.currentState.acknowledge(this, technicianId);
     this.updatedAt = getCurrentClockTime();
   }
 
@@ -137,10 +180,11 @@ public class Incident {
 
     SlaStatus previous = this.slaWindow.getStatus();
     SlaStatus evaluated = this.slaWindow.checkBreach(now, warningWindow());
-    if (previous != SlaStatus.BREACHED
-        && evaluated == SlaStatus.BREACHED
-        && this.priority != Priority.P1_CRITICAL) {
-      this.priority = this.priority.escalate();
+    if (previous != SlaStatus.BREACHED && evaluated == SlaStatus.BREACHED) {
+      this.priorityAtBreach = this.priority;
+      if (this.priority != Priority.P1_CRITICAL) {
+        this.priority = this.priority.escalate();
+      }
     }
     this.updatedAt = now;
     return evaluated;
@@ -304,6 +348,18 @@ public class Incident {
 
   public void setEscalatedAt(Instant escalatedAt) {
     this.escalatedAt = escalatedAt;
+  }
+
+  public EscalationLevel getEscalationLevel() {
+    return escalationLevel;
+  }
+
+  /** Records a new escalation level; the first escalation also stamps {@code escalatedAt}. */
+  public void escalateTo(EscalationLevel level, Instant at) {
+    this.escalationLevel = Objects.requireNonNull(level, "Escalation level must not be null");
+    if (this.escalatedAt == null && level != EscalationLevel.NONE) {
+      this.escalatedAt = at;
+    }
   }
 
   public Integer getFeedbackRating() {

@@ -17,6 +17,10 @@ public class User {
   private final Set<Category> skills;
   private int activeTicketsCount;
   private boolean available;
+  private final int maxActiveTickets;
+  private final boolean teamLead;
+
+  public static final int DEFAULT_MAX_ACTIVE_TICKETS = 5;
 
   public User(
       UserId id,
@@ -27,6 +31,32 @@ public class User {
       Set<Category> skills,
       int activeTicketsCount,
       boolean available) {
+    this(
+        id,
+        username,
+        fullName,
+        email,
+        role,
+        skills,
+        activeTicketsCount,
+        available,
+        DEFAULT_MAX_ACTIVE_TICKETS,
+        false);
+  }
+
+  public User(
+      UserId id,
+      String username,
+      String fullName,
+      String email,
+      Role role,
+      Set<Category> skills,
+      int activeTicketsCount,
+      boolean available,
+      int maxActiveTickets,
+      boolean teamLead) {
+    this.maxActiveTickets = Math.max(1, maxActiveTickets);
+    this.teamLead = teamLead;
     this.id = Objects.requireNonNull(id, "User ID must not be null");
     this.username = Objects.requireNonNull(username, "Username must not be null");
     this.fullName = Objects.requireNonNull(fullName, "Full name must not be null");
@@ -67,6 +97,20 @@ public class User {
 
   public boolean isAvailable() {
     return available;
+  }
+
+  /** Most tickets this person works on at once; automatic and manual assignment respect it. */
+  public int getMaxActiveTickets() {
+    return maxActiveTickets;
+  }
+
+  public boolean hasCapacity() {
+    return activeTicketsCount < maxActiveTickets;
+  }
+
+  /** Team leads receive the first escalation when a ticket is not acknowledged in time. */
+  public boolean isTeamLead() {
+    return teamLead;
   }
 
   public boolean hasSkill(Category category) {

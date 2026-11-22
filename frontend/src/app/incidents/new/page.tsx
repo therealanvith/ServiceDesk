@@ -1,5 +1,6 @@
 "use client";
 
+import { AssistantHelper } from "@/components/AssistantHelper";
 import { PriorityMatrixPreview } from "@/components/PriorityMatrixPreview";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -8,14 +9,16 @@ import {
   type Impact,
   type ItService,
   type PriorityPreview,
+  type ServiceStatus,
   type SimilarIncident,
+  type TriageSuggestion,
   type Urgency,
   api,
 } from "@/lib/apiClient";
-import { CATEGORY_LABELS, CRITICALITY_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, CRITICALITY_LABELS, SERVICE_HEALTH_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Wait for a pause in typing before asking the server for suggestions. */
 const DRAFT_DEBOUNCE_MS = 500;
@@ -42,6 +45,16 @@ export default function NewIncidentPage() {
   const [duplicates, setDuplicates] = useState<SimilarIncident[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [finishedKey, setFinishedKey] = useState(0);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
+  const [triage, setTriage] = useState<TriageSuggestion | null>(null);
+  const [offered, setOffered] = useState<Category[] | null>(null);
+  // A suggestion for a category an administrator switched off is ignored.
+  const offeredRef = useRef<Category[] | null>(null);
+  const pickCategory = useCallback((c: Category) => {
+    const list = offeredRef.current;
+    if (!list || list.includes(c)) setCategory(c);
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: servicesKey re-runs the load for "Try again"
   useEffect(() => {
@@ -52,6 +65,28 @@ export default function NewIncidentPage() {
       .then(setServices)
       .catch(() => setServicesFailed(true));
   }, [user, servicesKey]);
+
+  // Only the categories an administrator has switched on are offered.
+  useEffect(() => {
+    if (!user) return;
+    api
+      .listCategories()
+      .then((list) => {
+        const active = list.filter((c) => c.active).map((c) => c.category);
+        offeredRef.current = active;
+        setOffered(active);
+      })
+      .catch(() => {});
+  }, [user]);
+
+  // Known problems on a service: the reporter can check them before adding another ticket.
+  useEffect(() => {
+    if (!user) return;
+    api
+      .getServiceStatus()
+      .then(setServiceStatus)
+      .catch(() => {});
+  }, [user]);
 
   // The server owns the priority policy; ask it whenever an input changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: previewKey re-runs the request for "Try again"
@@ -85,7 +120,7 @@ export default function NewIncidentPage() {
         .then((s) => {
           if (!active) return;
           setSuggestion(s.category ? s : null);
-          if (s.category && !categoryTouched) setCategory(s.category);
+          if (s.category && !categoryTouched) pickCategory(s.category);
         })
         .catch(() => {});
       api
@@ -97,9 +132,12 @@ export default function NewIncidentPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [title, description, user, categoryTouched]);
+  }, [title, description, user, categoryTouched, pickCategory]);
 
   const service = services.find((s) => s.id === serviceId);
+  const affected = serviceStatus.find(
+    (s) => s.serviceId === serviceId && s.status !== "OPERATIONAL"
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +156,13 @@ export default function NewIncidentPage() {
         impact,
         urgency,
         serviceId: serviceId || undefined,
+        // Noted in the audit trail when the reporter kept every suggested value.
+        aiSuggestionAccepted:
+          triage !== null &&
+          triage.category === category &&
+          triage.impact === impact &&
+          triage.urgency === urgency &&
+          (triage.serviceId ?? "") === serviceId,
       });
       router.push(`/incidents/${created.id}`);
     } catch (err: unknown) {
@@ -168,9 +213,24 @@ export default function NewIncidentPage() {
               maxLength={10000}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => setFinishedKey((k) => k + 1)}
               placeholder="Where is it, who’s affected, and what have you already tried?"
             />
           </label>
+
+          <AssistantHelper
+            title={title}
+            description={description}
+            finishedKey={finishedKey}
+            onApply={(s) => {
+              setTriage(s);
+              pickCategory(s.category);
+              setCategoryTouched(true);
+              setImpact(s.impact);
+              setUrgency(s.urgency);
+              if (s.serviceId) setServiceId(s.serviceId);
+            }}
+          />
 
           {duplicates.length > 0 && (
             <output className="callout callout-warn">
@@ -216,6 +276,22 @@ export default function NewIncidentPage() {
               </span>
             )}
           </label>
+          {affected && (
+            <output className="callout callout-warn known-issue">
+              <p className="callout-title">Known issue on {affected.name}</p>
+              <p className="field-hint">
+                {SERVICE_HEALTH_LABELS[affected.status]} · {affected.openTickets} open ticket
+                {affected.openTickets === 1 ? "" : "s"}.{" "}
+                <Link
+                  href={`/issues?${new URLSearchParams({ serviceId: affected.serviceId })}`}
+                  className="link"
+                >
+                  See reported issues
+                </Link>{" "}
+                before opening a new one.
+              </p>
+            </output>
+          )}
 
           <div className="field-row">
             <label className="field">
@@ -227,11 +303,13 @@ export default function NewIncidentPage() {
                   setCategoryTouched(true);
                 }}
               >
-                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(CATEGORY_LABELS)
+                  .filter(([value]) => !offered || offered.includes(value as Category))
+                  .map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
               </select>
               {suggestion?.category && (
                 <span className="field-hint">
@@ -247,7 +325,7 @@ export default function NewIncidentPage() {
                         className="link-btn"
                         onClick={() => {
                           if (suggestion.category) {
-                            setCategory(suggestion.category);
+                            pickCategory(suggestion.category);
                             setCategoryTouched(true);
                           }
                         }}

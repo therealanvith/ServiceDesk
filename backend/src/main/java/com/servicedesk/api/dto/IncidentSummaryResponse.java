@@ -18,4 +18,29 @@ public record IncidentSummaryResponse(
     String assigneeName,
     SlaStatus slaStatus,
     Instant createdAt,
-    String serviceName) {}
+    String serviceName,
+    /** Lets the board and list tell the assignee apart without comparing names. */
+    UUID assigneeId,
+    Instant resolvedAt,
+    /** True when the viewer follows this issue ("affects me too") but did not report it. */
+    boolean joined) {
+
+  /** The same row shown to someone who only follows the issue: the reporter stays hidden. */
+  public IncidentSummaryResponse asJoined() {
+    return new IncidentSummaryResponse(
+        id,
+        incidentNumber,
+        title,
+        category,
+        status,
+        priority,
+        "Another user",
+        assigneeName,
+        slaStatus,
+        createdAt,
+        serviceName,
+        assigneeId,
+        resolvedAt,
+        true);
+  }
+}
