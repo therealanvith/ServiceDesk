@@ -9,6 +9,8 @@ erDiagram
     INCIDENTS ||--o{ NOTIFICATIONS : "references"
     INCIDENTS |o--o{ INCIDENTS : "major incident of"
     USERS ||--o{ SELF_HELP_FEEDBACK : "gives"
+    USERS ||--o{ INCIDENT_AFFECTED : "follows"
+    INCIDENTS ||--o{ INCIDENT_AFFECTED : "affects"
 
     USERS {
         uuid id PK
@@ -117,6 +119,26 @@ erDiagram
         uuid user_id FK
         boolean helped "steps solved it without a ticket"
         timestamp_with_time_zone created_at
+    }
+
+    INCIDENT_AFFECTED {
+        uuid incident_id PK
+        uuid user_id PK
+        timestamp_with_time_zone created_at
+    }
+
+    AI_ADVICE_CACHE {
+        varchar_64 cache_key PK "sha-256 of the question"
+        varchar_20 kind "self-help | suggest-fix | summary"
+        text summary
+        text steps "JSON array"
+        boolean it_related
+        timestamp_with_time_zone created_at
+    }
+
+    CATEGORY_SETTINGS {
+        varchar_30 code PK
+        boolean active
     }
 
     IT_SERVICES ||--o{ INCIDENTS : "affected by"

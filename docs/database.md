@@ -132,6 +132,39 @@ Whether the assistant's "Try this first" steps solved a problem without a ticket
 | `helped` | BOOLEAN | NOT NULL |
 | `created_at` | TIMESTAMPTZ | NOT NULL, default `CURRENT_TIMESTAMP`; indexed (`idx_self_help_feedback_time`) for time-window reports |
 
+### 2.11 `incident_affected` (V19)
+People who said "this affects me too" on an open issue instead of filing a duplicate. Counted with the reporter and any linked tickets to give the number of affected users, which feeds the priority.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `incident_id` | UUID | FK → `incidents(id)` ON DELETE CASCADE; part of the primary key |
+| `user_id` | UUID | FK → `users(id)` ON DELETE CASCADE; part of the primary key (one row per person per issue) |
+| `created_at` | TIMESTAMPTZ | NOT NULL; indexed by `user_id` (`idx_incident_affected_user`) |
+
+### 2.12 `ai_advice_cache` (V21)
+Quick fixes and ticket summaries already written by the language model, so the same question is not asked twice. Only Gemini answers are stored.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `cache_key` | VARCHAR(64) | Primary key: SHA-256 of the kind, ticket id (when per-ticket) and the normalised text |
+| `kind` | VARCHAR(20) | `self-help`, `suggest-fix` or `summary` |
+| `summary` | TEXT | NOT NULL |
+| `steps` | TEXT | NOT NULL; JSON array of strings |
+| `source` | VARCHAR(20) | `gemini` |
+| `it_related` | BOOLEAN | NOT NULL; V22 removed earlier "not an IT problem" rows (they are no longer saved) |
+| `created_at` | TIMESTAMPTZ | NOT NULL |
+
+### 2.13 `category_settings` (V23)
+Which incident categories reporters can pick. The codes mirror the `Category` enum; a missing row counts as active.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `code` | VARCHAR(30) | Primary key (`NETWORK`, `HARDWARE`, ... `STORAGE`) |
+| `active` | BOOLEAN | NOT NULL, default `true` |
+
+### 2.14 Other additions
+- `users.avatar` (TEXT, nullable, V20): the Google profile picture URL, refreshed at each Google sign-in; password accounts show the first letter of their name.
+
 ---
 
 ## 3. Indexing & Query Optimization Strategy
@@ -170,3 +203,9 @@ To satisfy **NFR-02** ($< 200\text{ ms}$ query response), the following indexes 
 - **`V15__acknowledge_capacity_escalation.sql`**: `ACKNOWLEDGED` status, `incidents.escalation_level`, `users.max_active_tickets` and `users.is_team_lead`.
 - **`V16__self_help_feedback.sql`**: `self_help_feedback` table.
 - **`V17__major_incidents.sql`**: `incidents.parent_incident_id`, self-link check and index.
+- **`V18__priority_at_breach.sql`**: remembers the priority when a resolution target was first missed.
+- **`V19__incident_affected.sql`**: `incident_affected` ("this affects me too").
+- **`V20__user_avatar.sql`**: `users.avatar`.
+- **`V21__ai_advice_cache.sql`**: `ai_advice_cache`.
+- **`V22__drop_non_it_advice.sql`**: removes saved "not an IT problem" answers.
+- **`V23__category_settings.sql`**: `category_settings`, seeded with the nine categories.

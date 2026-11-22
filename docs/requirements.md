@@ -26,12 +26,14 @@
 - **FR-INC-07 (Acknowledge)**: The assigned technician must be able to acknowledge a ticket (`ASSIGNED` → `ACKNOWLEDGED`) before starting work; this meets the response target, adds a `PICKUP` update and tells the reporter. Starting work straight from `ASSIGNED` must also be allowed and counts as acknowledging.
 - **FR-INC-08 (Major incidents)**: Administrators must be able to link an open ticket under another open ticket (the major incident) and unlink it, one level deep. "This affects me too" on All issues must create a ticket already linked under that issue. Resolving the major incident must resolve every open linked ticket with the same fix and notify their reporters.
 - **FR-INC-09 (Service status)**: Everyone must be able to see each active service as Operational, Degraded or Outage, computed from its open tickets (section 4.5), with counts only.
+- **FR-INC-11 (Affects me too)**: Instead of filing a duplicate, a signed-in user can click "This affects me too" on an open issue in All issues. They are counted once on the main ticket, notified when it is fixed, and see it in My tickets marked as followed (the reporter's name stays hidden). The assignee is told when more people join.
 - **FR-INC-10 (Board)**: Staff must have a board (`/board`) with columns Assigned, Acknowledged, In progress, Waiting on reporter and Resolved (last 7 days). Cards move by drag and drop and, for keyboard users, by a "Move to" control; a move runs the matching lifecycle action.
 
 ### 1.3 Dynamic Priority Calculation (FR-PRIO)
 - **FR-PRIO-01**: The system must calculate incident priority dynamically using a pluggable `PriorityCalculationStrategy`.
 - **FR-PRIO-02**: Priority is derived from the combination of **Impact** (organizational scope of disruption) and **Urgency** (time criticality of resolution).
 - **FR-PRIO-03**: Default calculation maps inputs to 4 priority levels: `P1_CRITICAL`, `P2_HIGH`, `P3_MEDIUM`, and `P4_LOW`.
+- **FR-PRIO-05 (Affected users)**: The number of affected users (the reporter, linked tickets and people who clicked "This affects me too") feeds the weighted score: 3 or more add 1, 10 or more add 2. When the count grows, the priority is recalculated and only ever raised; the change is audited and the reporter and assignee are notified.
 - **FR-PRIO-04**: Administrators and lead technicians can override computed priority with a documented justification.
 
 ### 1.4 Automated Technician Assignment (FR-ASGN)
@@ -41,6 +43,7 @@
   - **SkillMatchAssignmentStrategy**: Matches incident category with technician skills, falling back to least-loaded technician if ties occur.
 - **FR-ASGN-02**: The active assignment strategy must be configurable at runtime by administrators without restarting the application.
 - **FR-ASGN-03**: Technicians and administrators may manually reassign an incident.
+- **FR-ASGN-05 (Team lead)**: A technician marked as team lead can see every ticket, load the technician list, and assign or reassign any ticket, with the same capacity checks as administrators. Other technicians cannot.
 - **FR-ASGN-04 (Capacity)**: Each technician must have an open-ticket limit (default 5, 1–50, set by administrators). Automatic assignment must skip technicians at their limit, whatever strategy is active (`CapacityAwareAssignmentStrategy`); a new ticket stays unassigned when nobody has room. Manually assigning a technician who is at their limit must be refused with 409 Conflict. Resolved, closed and cancelled tickets don't count towards the limit.
 
 ### 1.5 Service Level Agreement (SLA) & Automated Escalation (FR-SLA)
@@ -90,6 +93,12 @@
 - **FR-INTEL-09 (Self-help)**: Before filing, the assistant offers up to four steps to try, drawn from how similar tickets were fixed (never their number, title or reporter), and asks whether they helped. The answer is stored to measure deflection.
 - **FR-INTEL-10 (Staff assistant)**: On a ticket, technicians and administrators can ask for a suggested fix and for a summary of the ticket and its history.
 - **FR-INTEL-11 (Fallback)**: The assistant uses Gemini when an API key is configured and falls back to built-in rules when it is missing, slow (8 s) or returns something unusable. Every answer says which one produced it.
+
+- **FR-INTEL-12 (Automatic quick fix)**: When a reporter leaves the description box, the assistant offers a quick fix without being asked; reporters also see one on their own open tickets. Technicians see an automatic summary and suggested fix when they open a ticket. Gemini answers are stored in `ai_advice_cache`, so the same question is not sent twice.
+- **FR-INTEL-13 (IT check)**: If the text is clearly not about technology the report form says so (a warning; the ticket can still be submitted). The check is deliberately lenient: anything involving a system, portal, app, account, device or network counts as IT.
+- **FR-INTEL-14 (Help chat)**: A chatbot, available on every page, answers IT questions and tells the user where their own tickets stand. It uses Gemini and falls back to the on-device knowledge base (about 28 common problems) when Gemini is unavailable.
+- **FR-USER-09 (Profile picture)**: Google sign-in uses the Google profile picture; password accounts show the first letter of the name.
+- **FR-CAT-01 (Incident categories)**: Administrators can switch each category on or off in Settings. Off categories are hidden from the report form and refused by the API; tickets already filed keep theirs, and at least one category must stay on. A new category needs one enum value, one migration row and keywords for the classifier, and no change to unrelated code.
 
 ### 1.10 Reporting (FR-REP)
 - **FR-REP-01 (Trends)**: Administrators can view trends over 7, 30 or 90 days (`GET /api/v1/reports/trends?days=`): tickets created vs resolved per day, SLA compliance per week, mean time to resolve by category, first-response time in minutes, escalations by level, and self-help deflection.
@@ -216,3 +225,19 @@ Computed from a service's open tickets (not resolved, closed or cancelled):
 | **Outage** | An open major incident (a ticket with open linked tickets), or two or more open P1 tickets |
 | **Degraded** | Any open P1 or P2 ticket, or two or more open tickets |
 | **Operational** | Otherwise |
+
+## 4. Incident lifecycle compared with the course brief
+
+The brief suggests NEW → CLASSIFIED → ASSIGNED → ACKNOWLEDGED → IN_PROGRESS → RESOLVED → VERIFIED → CLOSED and allows the team to adapt it.
+
+| Brief state | In ServiceDesk | Why |
+| :--- | :--- | :--- |
+| NEW, CLASSIFIED | `REPORTED` | Classification (category, impact, urgency, priority, SLA) happens automatically when the ticket is created, so there is no separate waiting state. |
+| ASSIGNED | `ASSIGNED` | Same. |
+| ACKNOWLEDGED | `ACKNOWLEDGED` | Same; it meets the response target. |
+| IN_PROGRESS | `IN_PROGRESS`, plus `PENDING_INFO` | The SLA clock pauses while waiting for the reporter. |
+| RESOLVED | `RESOLVED` | The reporter can reopen it ("It's still not fixed"). |
+| VERIFIED, CLOSED | `CLOSED` | The reporter (or an administrator) verifies the fix by closing the ticket and rating the support. A closed ticket can still be reopened within 14 days. |
+| (cancellation) | `CANCELLED` | A ticket reported by mistake. |
+
+Illegal moves (for example REPORTED → CLOSED) throw `InvalidStateTransitionException` and return HTTP 409.

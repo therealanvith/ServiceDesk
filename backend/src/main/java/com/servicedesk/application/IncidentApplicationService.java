@@ -51,21 +51,25 @@ import com.servicedesk.domain.intelligence.KeywordCategoryClassifier;
 import com.servicedesk.domain.intelligence.SimilarityStrategy;
 import com.servicedesk.domain.notification.NotificationChannel;
 import com.servicedesk.domain.notification.NotificationMessage;
+import com.servicedesk.domain.priority.Priority;
 import com.servicedesk.domain.priority.PriorityCalculationStrategy;
 import com.servicedesk.domain.repository.AuditLogRepository;
 import com.servicedesk.domain.repository.IncidentFilter;
 import com.servicedesk.domain.repository.IncidentRepository;
 import com.servicedesk.domain.repository.UserRepository;
+import com.servicedesk.domain.service.BusinessCriticality;
 import com.servicedesk.domain.sla.SlaPolicyProvider;
 import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.User;
 import com.servicedesk.domain.user.UserId;
 import com.servicedesk.infrastructure.live.LiveEventBroadcaster;
+import com.servicedesk.infrastructure.persistence.entity.CategorySettingEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentAffectedEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentCommentEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentEntity;
 import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataCategorySettingJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentAffectedJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentCommentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
@@ -104,6 +108,8 @@ public class IncidentApplicationService {
   private final SpringDataItServiceJpaRepository serviceRepository;
   private final LiveEventBroadcaster liveEvents;
   private final SpringDataIncidentAffectedJpaRepository affectedRepository;
+  private final PriorityCalculationStrategy priorityStrategy;
+  private final SpringDataCategorySettingJpaRepository categorySettings;
 
   private static final int MAX_PAGE_SIZE = 100;
 
@@ -124,7 +130,10 @@ public class IncidentApplicationService {
       SpringDataItServiceJpaRepository serviceRepository,
       PriorityCalculationStrategy priorityStrategy,
       LiveEventBroadcaster liveEvents,
-      SpringDataIncidentAffectedJpaRepository affectedRepository) {
+      SpringDataIncidentAffectedJpaRepository affectedRepository,
+      SpringDataCategorySettingJpaRepository categorySettings) {
+    this.priorityStrategy = priorityStrategy;
+    this.categorySettings = categorySettings;
     this.affectedRepository = affectedRepository;
     this.liveEvents = liveEvents;
     this.incidentRepository = incidentRepository;
@@ -161,6 +170,14 @@ public class IncidentApplicationService {
               .findById(request.serviceId())
               .filter(ItServiceEntity::isActive)
               .orElseThrow(() -> new IllegalArgumentException("Select an active IT service"));
+    }
+
+    // A category with no row yet is available; an administrator switches one off explicitly.
+    if (!categorySettings
+        .findById(request.category().name())
+        .map(CategorySettingEntity::isActive)
+        .orElse(true)) {
+      throw new IllegalArgumentException("That category is not available right now");
     }
 
     Incident incident =
@@ -530,6 +547,7 @@ public class IncidentApplicationService {
     }
     affectedRepository.save(
         new IncidentAffectedEntity(issueId, user.getId().getValue(), clock.instant()));
+    raisePriorityForAffectedUsers(issue, user);
     if (issue.getAssigneeId() != null) {
       notifyChannels(
           NotificationMessage.of(
@@ -542,6 +560,58 @@ public class IncidentApplicationService {
                   + "+ affected)."));
     }
     broadcastChange(issue);
+  }
+
+  /**
+   * More people affected can only make a ticket more urgent: the priority strategy is asked again
+   * with the number of affected users, and the ticket is raised (never lowered) if it scores
+   * higher. The change is audited and the reporter and assignee are told.
+   */
+  private void raisePriorityForAffectedUsers(Incident issue, User actor) {
+    UUID issueId = issue.getId().getValue();
+    int people =
+        1
+            + incidentRepository.findChildren(issue.getId()).size()
+            + (int) affectedRepository.countByIncidentId(issueId);
+    BusinessCriticality criticality =
+        issue.getAffectedServiceId() == null
+            ? BusinessCriticality.MEDIUM
+            : serviceRepository
+                .findById(issue.getAffectedServiceId())
+                .map(ItServiceEntity::getCriticality)
+                .orElse(BusinessCriticality.MEDIUM);
+    Priority raised =
+        priorityStrategy.calculatePriority(
+            issue.getImpact(), issue.getUrgency(), criticality, people);
+    if (raised.ordinal() >= issue.getPriority().ordinal()) {
+      return;
+    }
+    String old = issue.getPriority().name();
+    String why = "Raised automatically: " + people + " people are affected";
+    issue.overridePriority(raised, why, actor.getId());
+    incidentRepository.save(issue);
+    auditLogRepository.save(
+        AuditLog.create(
+            issue.getId(),
+            actor.getId(),
+            AuditAction.PRIORITY_OVERRIDDEN.name(),
+            old,
+            raised.name(),
+            clock.instant(),
+            why));
+    for (UserId recipient :
+        java.util.stream.Stream.of(issue.getReporterId(), issue.getAssigneeId())
+            .filter(java.util.Objects::nonNull)
+            .distinct()
+            .toList()) {
+      notifyChannels(
+          NotificationMessage.of(
+              recipient,
+              issue.getId(),
+              "PRIORITY_CHANGED",
+              "Priority Changed: " + issue.getIncidentNumber(),
+              "Priority changed from " + old + " to " + raised + ": " + why));
+    }
   }
 
   @Transactional

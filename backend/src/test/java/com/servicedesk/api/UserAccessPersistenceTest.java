@@ -90,7 +90,7 @@ class UserAccessPersistenceTest {
   }
 
   @Test
-  void adminsManageStaffButOnlyRootGrantsAdmin() throws Exception {
+  void adminsManageStaffAndGrantAdminButOnlyRootChangesAdmins() throws Exception {
     users.saveAndFlush(
         new UserEntity(
             UUID.randomUUID(),

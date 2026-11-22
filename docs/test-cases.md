@@ -1,6 +1,6 @@
 # Test Cases Specification
 
-All test cases below are automated and run with `./mvnw test` in `backend/`. 104 tests (JUnit,
+All test cases below are automated and run with `./mvnw test` in `backend/`. 136 tests (JUnit,
 including the ArchUnit architecture rules) across unit, integration (Spring Boot + H2 in PostgreSQL mode) and architecture
 suites cover them. Every row names the test method that proves it. External services are never
 called: Gemini and Brevo are tested against a mocked HTTP server, and the integration tests run
@@ -75,7 +75,7 @@ without API keys, so they exercise the rule-based assistant and log-only email.
 | TC-34 | AuthZ | Another employee reads or changes someone's ticket | 404 (existence not revealed) | `IncidentPersistenceTest.otherEmployeesCannotReadCommentsOrChangeIncident` |
 | TC-35 | AuthZ | Non-assigned technician starts work; assignee closes instead of reporter | 404 / 403; reporter can close | `IncidentPersistenceTest.onlyAssigneeWorksTicketAndOnlyReporterClosesIt` |
 | TC-36 | AuthZ | Technician tries to assign | 403; root can | `IncidentPersistenceTest.onlyAdminsAssignTickets` |
-| TC-37 | AuthZ | Admin promotes to technician, then to administrator; second root | Technician OK; administrator 403 (root only); root 400 | `UserAccessPersistenceTest.adminsManageStaffButOnlyRootGrantsAdmin` |
+| TC-37 | AuthZ | Admin promotes to technician, then to administrator; then changes that administrator; second root | Technician OK; administrator OK; the new administrator can no longer be changed by an admin (403, root only); second root 400 | `UserAccessPersistenceTest.adminsManageStaffAndGrantAdminButOnlyRootChangesAdmins` |
 | TC-38 | Invalid | Create account with a short password | 400; valid account can then sign in | `UserAccessPersistenceTest.adminsCreatePasswordAccounts` |
 | TC-39 | AuthZ | Self-registration asking for the ROOT role; duplicate username | Always EMPLOYEE; duplicate rejected | `UserAccessPersistenceTest.selfRegistrationCreatesEmployees` |
 | TC-40 | AuthZ | Password login for a Google-only account | 401 | `UserAccessPersistenceTest.googleOnlyAccountsCannotUsePasswordLogin` |
@@ -142,7 +142,7 @@ without API keys, so they exercise the rule-based assistant and log-only email.
 | TC-76 | Normal | `POST /incidents/triage` without a key | 200, `source: "rules"`, NETWORK / HIGH and a predicted priority | `AssistantEndpointsTest.triageFallsBackToRulesWithoutAKey` |
 | TC-77 | AuthZ | Self-help for a printer jam when another user's resolved ticket matches | Fix text included; no ticket number, title or id | `AssistantEndpointsTest.selfHelpUsesPastFixesButNeverOtherPeoplesTickets` |
 | TC-78 | Normal | Self-help feedback `{helped: true}` | 204 and a stored row | `AssistantEndpointsTest.selfHelpFeedbackIsRecorded` |
-| TC-79 | AuthZ | Employee asks for a ticket summary; technician asks for summary and fix | 403; 200 with summary / steps | `AssistantEndpointsTest.fixSuggestionsAndSummariesAreForStaffOnly` |
+| TC-79 | AuthZ | Employee asks for a ticket summary; technician asks for summary and fix | 403 (summaries are staff-only); 200 with summary / steps | `AssistantEndpointsTest.fixSuggestionsAndSummariesAreForStaffOnly` |
 
 ## 11. Email and live updates
 
@@ -166,7 +166,31 @@ without API keys, so they exercise the rule-based assistant and log-only email.
 | TC-90 | AuthZ / Invalid | Trends as an employee, and with `days=14` | 403 for the employee; 400 for a range other than 7, 30 or 90 | `TrendsReportTest.onlyAdministratorsSeeTrendsAndOnlyForTheOfferedRanges` |
 | TC-91 | Normal | Create and resolve a ticket, then read 7-day trends | It counts in that day's created and resolved, and in the week's SLA compliance | `TrendsReportTest.aResolvedTicketShowsUpInTheDailySeriesAndCompliance` |
 
-## 13. Manual end-to-end checks (demo)
+## 13. Phase 5: affects me too, quick fix, chat, categories, team lead
+
+| ID | Type | Scenario | Expected result | Automated test |
+| :--- | :--- | :--- | :--- | :--- |
+| TC-92 | Normal | Another employee clicks "This affects me too", twice, then removes themself | Counted once (2 affected), no new ticket, back to 1 after removal | `PhaseFiveTest.affectsMeTooCountsThePersonWithoutOpeningATicket` |
+| TC-93 | Boundary | The reporter clicks "This affects me too" on their own ticket | Count stays 1; `affectedByMe` is true | `PhaseFiveTest.theReporterCannotInflateTheCount` |
+| TC-94 | AuthZ | A follower opens My tickets | The followed issue is listed with `joined: true` and the reporter shown as "Another user" | `PhaseFiveTest.joinedIssueShowsInMyTicketsWithoutTheReporterName` |
+| TC-95 | AuthZ | Reporter and an unrelated employee ask for a quick fix on a ticket | 200 with steps for the reporter; 404 for the other employee | `PhaseFiveTest.reporterGetsAQuickFixOnTheirOwnTicketButOthersDoNot` |
+| TC-96 | AuthZ | An employee asks for a ticket summary | 403 (summaries are for staff) | `PhaseFiveTest.employeesCannotRequestASummary` |
+| TC-97 | Normal | Help chat: "my wifi keeps dropping" without an API key | 200, `source: "rules"`, answer from the knowledge base | `PhaseFiveTest.helpChatAnswersFromTheKnowledgeBase` |
+| TC-98 | AuthZ | Help chat: "what is the status of my ticket" from two users | Lists only the caller's own tickets | `PhaseFiveTest.helpChatListsTheCallersOwnTicketsOnly` |
+| TC-99 | Invalid | Help chat with an empty message list | 400 | `PhaseFiveTest.helpChatRejectsAnEmptyConversation` |
+| TC-100 | AuthZ | A team lead lists tickets, lists technicians and reassigns; a plain technician tries the same | Lead sees all tickets and can assign; the other technician gets 403 | `PhaseFiveTest.teamLeadCanAssignAndSeeEveryTicketButOtherTechniciansCannot` |
+| TC-101 | Rule | The same quick-fix question is asked twice (different spacing and case) | The model is called once; the answer is stored and reused | `AdviceCacheTest.theSameQuestionReachesTheModelOnlyOnce` |
+| TC-102 | Rule | Two different questions | The model is called twice; two rows are stored | `AdviceCacheTest.aDifferentQuestionAsksAgain` |
+| TC-103 | Normal | Knowledge base: Wi-Fi, VPN, printer, password, locked account, monitor, boot, phishing, call audio | Each text finds its article | `KnowledgeBaseTest.matchesCommonProblems` |
+| TC-104 | Boundary | Text containing "flag" and "link" | Short keywords ("lag", "ink") do not match inside other words | `KnowledgeBaseTest.shortKeywordsDoNotMatchInsideOtherWords` |
+| TC-105 | Invalid | Blank or null text; article integrity | No match; at least 25 unique articles, each with 3 to 4 steps | `KnowledgeBaseTest.blankTextMatchesNothing`, `KnowledgeBaseTest.everyArticleIsUsable` |
+| TC-106 | Rule | An administrator switches the Storage category off | Reporters get 400 for that category; other categories still work | `CategoriesAndAffectedPriorityTest.anAdministratorCanSwitchACategoryOff` |
+| TC-107 | AuthZ | An employee tries to switch a category off | 403 | `CategoriesAndAffectedPriorityTest.onlyAdministratorsChangeCategories` |
+| TC-108 | Rule | Three people are affected by a P3 ticket | Priority is raised to P2 and audited; it is never lowered | `CategoriesAndAffectedPriorityTest.moreAffectedPeopleRaiseThePriorityOnly` |
+| TC-109 | Boundary | Weighted score with 1, 3 and 10 affected users | P3, P2 and P1; one person equals the old three-argument result | `CategoriesAndAffectedPriorityTest.theWeightedScoreUsesTheNumberOfAffectedUsers` |
+| TC-110 | AuthZ | An administrator promotes an employee to administrator | 200; other administrators can no longer change that account; only root can; a second root is refused | `UserAccessPersistenceTest.adminsManageStaffAndGrantAdminButOnlyRootChangesAdmins` |
+
+## 14. Manual end-to-end checks (demo)
 
 | ID | Workflow | Steps | Expected result |
 | :--- | :--- | :--- | :--- |
@@ -179,3 +203,11 @@ without API keys, so they exercise the rule-based assistant and log-only email.
 | M-07 | Major incident | Two employees report the same outage; `admin` links the second under the first; the technician resolves the first | Both tickets resolved with the same fix, both reporters notified; service status back to Operational |
 | M-08 | Board | As a technician, drag a card from Assigned to Acknowledged, then move another with the keyboard "Move to" control | Each move runs the matching lifecycle action and the card shows in its new column |
 | M-09 | Trends | As `admin`, open the trends report and switch between 7, 30 and 90 days | Created vs resolved, SLA compliance, time to resolve, first response, escalations and self-help deflection update for the window |
+
+| M-10 | Affects me too | As `emp`, open All issues, expand an open issue owned by someone else and click "This affects me too" | A toast confirms; the affected count goes up; the issue appears in My tickets as "You're following this" and opens in All issues; no new ticket exists |
+| M-11 | Quick fix on report | As `emp`, type a problem into the report form and click out of the description box | A quick fix appears by itself; typing something that is not an IT problem shows a notice instead |
+| M-12 | Technician assistant | As `tech_net`, open a ticket | Summary and suggested fix appear without clicking; opening it again is instant (saved) |
+| M-13 | Help chat | Open the chat button, ask "my VPN will not connect" and "where is my ticket?" | A reply from Gemini or the built-in rules; the second answer lists only your tickets |
+| M-14 | Categories | As `admin`, switch a category off in Settings, then open the report form as `emp` | The category is no longer in the list; existing tickets keep it |
+| M-15 | Team lead | As `tech_lead`, open All incidents, open a ticket assigned to someone else and click Reassign | The lead can pick another technician; `tech_net` cannot reassign |
+| M-16 | Sidebar | Collapse the sidebar with the X, reload, then reopen it with the menu button | The choice is remembered; on a phone the sidebar is a slide-in drawer |

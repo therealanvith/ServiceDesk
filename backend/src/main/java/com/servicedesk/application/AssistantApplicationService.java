@@ -121,7 +121,7 @@ public class AssistantApplicationService {
    * Steps to try before filing. Built from how similar tickets were fixed, but only their fix text
    * is used: never another ticket's number, title or reporter.
    */
-  @Transactional(readOnly = true)
+  @Transactional
   public AdviceResponse selfHelp(TriageRequest request) {
     TicketDraft draft = new TicketDraft(request.title(), request.description());
     List<PastFix> fixes =
@@ -151,7 +151,7 @@ public class AssistantApplicationService {
   }
 
   /** A draft fix for staff working a ticket they can see. */
-  @Transactional(readOnly = true)
+  @Transactional
   public AdviceResponse suggestFix(UUID incidentId, String username) {
     TicketContext ticket = incidents.assistantContext(incidentId, username);
     List<PastFix> similar =
@@ -166,11 +166,27 @@ public class AssistantApplicationService {
     return remember(key, "suggest-fix", answer);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public SummaryResponse summarize(UUID incidentId, String username) {
     TicketContext ticket = incidents.assistantContext(incidentId, username);
+    // New updates change the key, so a summary is regenerated only when the ticket has moved on.
+    String key =
+        cacheKey(
+            "summary",
+            incidentId,
+            ticket.title() + " " + ticket.status(),
+            ticket.description() + " " + String.join(" ", ticket.timeline()));
+    AdviceResponse cached = cachedAdvice(key);
+    if (cached != null) {
+      return new SummaryResponse(cached.summary(), cached.source());
+    }
     Answer<String> answer = ask("summary", a -> a.summarize(ticket));
-    return new SummaryResponse(answer.value(), answer.source());
+    AdviceResponse saved =
+        remember(
+            key,
+            "summary",
+            new Answer<>(new AssistantAdvice(answer.value(), List.of()), answer.source()));
+    return new SummaryResponse(saved.summary(), saved.source());
   }
 
   /** A reply in the help chat, aware of the caller's own tickets. */
@@ -237,7 +253,8 @@ public class AssistantApplicationService {
     AssistantAdvice value = answer.value();
     AdviceResponse response =
         new AdviceResponse(value.summary(), value.steps(), answer.source(), value.itRelated());
-    if (gemini.source().equals(answer.source())) {
+    // A "not an IT problem" verdict is not kept: a wrong one must not stick.
+    if (gemini.source().equals(answer.source()) && value.itRelated()) {
       try {
         adviceCache.save(
             new AiAdviceCacheEntity(

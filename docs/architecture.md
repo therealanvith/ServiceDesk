@@ -224,3 +224,9 @@ Nothing is sent if the transaction rolls back, and a failing channel never undoe
 
 ### 4.4 Assistant calls
 `AssistantApplicationService` builds the domain records (`TicketDraft`, `TicketContext`, `PastFix`) from data the caller may see, asks `GeminiAssistantAdapter` when a key is configured and falls back to `RuleBasedIncidentAssistant` on any failure. The browser only ever talks to our API; the Gemini key stays on the server.
+
+### 4.6 Quick fixes, summaries and the help chat
+`AssistantApplicationService` serves four things: triage, quick fixes (before a ticket exists and on an open ticket), summaries and chat. Quick fixes and summaries go through a cache first: the key is a SHA-256 hash of the kind, the ticket id (for per-ticket answers) and the normalised text, so a repeat question is answered from `ai_advice_cache`. Only Gemini answers are stored, because the rule-based answer is free. Summaries include the status and the thread in their key, so a new update produces a fresh summary. Chat sends the last twelve messages, the caller's own ticket lines and the best-matching articles from `KnowledgeBase` to Gemini, and answers from the knowledge base alone when Gemini fails. The "is this an IT problem" flag is part of the structured answer, so it costs no extra call.
+
+### 4.7 Frontend shell
+`AppShell` wraps every page: a collapsible `Sidebar` (a slide-in drawer under 900 px), the page, and the floating `ChatWidget`. Navigation is plain text links with the current page highlighted; the footer holds the profile picture or first letter, the light/dark toggle and sign out.

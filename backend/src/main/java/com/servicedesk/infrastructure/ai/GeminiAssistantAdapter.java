@@ -96,9 +96,11 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
             + " is blocked (LOW can wait, MEDIUM slowed down, HIGH cannot work now). serviceName:"
             + " the affected service from this list, or null: "
             + serviceNames
-            + ". reason: one sentence, under 25 words, explaining the choice. itRelated: false"
-            + " when the text is not about computers, software, networks, accounts, devices or"
-            + " other office technology (for example a cooking or personal question).\n"
+            + ". reason: one sentence, under 25 words, explaining the choice. itRelated: true"
+            + " for anything involving a system, portal, website, app, account, device or"
+            + " network, including payments or forms that fail or block on an online system;"
+            + " false only when the text is clearly unrelated to technology (for example a"
+            + " recipe or a medical question). When unsure, answer true.\n"
             + ticket(draft.title(), draft.description());
     Map<String, Object> schema =
         object(
@@ -127,9 +129,12 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
         "Before this person files a ticket, suggest 2 to 4 short, safe steps they can try"
             + " themselves (no admin rights, nothing that risks data). Use the fixes that worked"
             + " for similar problems where they apply. Do not mention other tickets or people."
-            + " summary: one encouraging sentence. itRelated: false when the text is not about"
-            + " computers, software, networks, accounts, devices or other office technology; then"
-            + " steps must be empty and summary says this is not an IT problem.\nFixes that worked"
+            + " summary: one encouraging sentence. itRelated: true for anything involving a"
+            + " system, portal, website, app, account, device or network, including payments or"
+            + " forms that fail or block on an online system; false only when the text is clearly"
+            + " unrelated to technology (for example a recipe or a medical question), and then"
+            + " steps must be empty and summary says this is not an IT problem. When unsure,"
+            + " answer true.\nFixes that worked"
             + " before: "
             + fixes(pastFixes, false)
             + "\n"

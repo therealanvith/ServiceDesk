@@ -1,5 +1,6 @@
 "use client";
 
+import { CategorySettings } from "@/components/settings/CategorySettings";
 import { ServiceCatalogSettings } from "@/components/settings/ServiceCatalogSettings";
 import { SlaPolicySettings } from "@/components/settings/SlaPolicySettings";
 import { useAuth } from "@/context/AuthContext";
@@ -261,6 +262,17 @@ export default function AdminPage() {
           </p>
         </div>
         <SlaPolicySettings onError={setError} />
+      </section>
+
+      <section className="settings-section">
+        <div>
+          <h2>Incident categories</h2>
+          <p>
+            Which categories reporters can pick. Switching one off hides it from the report form;
+            tickets already filed under it keep it.
+          </p>
+        </div>
+        <CategorySettings onError={setError} />
       </section>
 
       <section className="settings-section">

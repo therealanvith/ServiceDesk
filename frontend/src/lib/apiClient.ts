@@ -60,6 +60,11 @@ export interface UserProfile {
   avatar: string | null;
 }
 
+export interface CategorySetting {
+  category: Category;
+  active: boolean;
+}
+
 export interface AuthResult {
   token: string;
   user: UserProfile;
@@ -550,6 +555,9 @@ export const api = {
     apiClient<UserAccount>(`/users/${id}/active`, put({ active })),
 
   // Catalogue
+  listCategories: () => apiClient<CategorySetting[]>("/catalog/categories"),
+  setCategoryActive: (category: Category, active: boolean) =>
+    apiClient<CategorySetting>(`/catalog/categories/${category}`, put({ active })),
   listServices: (includeRetired = false) =>
     apiClient<ItService[]>(`/catalog/services${includeRetired ? "?includeRetired=true" : ""}`),
   createService: (data: Omit<ItService, "id">) =>

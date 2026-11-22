@@ -389,6 +389,33 @@ classDiagram
     IncidentAssistant <|.. RuleBasedIncidentAssistant
     AssistantApplicationService --> IncidentAssistant : Gemini first, rules on failure
 
+    class KnowledgeBase {
+        <<utility>>
+        +articles() List~Article~
+        +best(text) Optional~Article~
+        +search(text, limit) List~Article~
+    }
+    class AiAdviceCacheEntity {
+        -String cacheKey
+        -String kind
+        -String summary
+        -String steps
+        -boolean itRelated
+    }
+    class CategoryApplicationService {
+        +list() List~CategorySettingResponse~
+        +update(category, active)
+    }
+    RuleBasedIncidentAssistant --> KnowledgeBase : on-device answers
+    GeminiAssistantAdapter --> KnowledgeBase : grounding notes for chat
+    AssistantApplicationService --> AiAdviceCacheEntity : saves Gemini answers
+    class IncidentAffectedEntity {
+        -UUID incidentId
+        -UUID userId
+    }
+    IncidentApplicationService --> IncidentAffectedEntity : "affects me too"
+    IncidentApplicationService --> CategoryApplicationService : category switch
+
     %% Relationships
     Incident *-- IncidentId
     Incident *-- SlaWindow

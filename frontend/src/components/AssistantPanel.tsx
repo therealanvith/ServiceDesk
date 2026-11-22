@@ -3,9 +3,12 @@
 import { SOURCE_LABELS } from "@/components/AssistantHelper";
 import { type AssistantAdvice, type AssistantSummary, api } from "@/lib/apiClient";
 import { useCooldown } from "@/lib/useCooldown";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-/** Staff-only assistant on a ticket: a quick summary and a draft fix. */
+/**
+ * Staff-only assistant on a ticket: a summary and a draft fix. Both load by themselves when the
+ * ticket opens; the server keeps them, so the next visit reads the saved answer.
+ */
 export function AssistantPanel({
   incidentId,
   onUseAsResolution,
@@ -19,54 +22,45 @@ export function AssistantPanel({
 }) {
   const [summary, setSummary] = useState<AssistantSummary | null>(null);
   const [fix, setFix] = useState<AssistantAdvice | null>(null);
-  const [busy, setBusy] = useState<"summary" | "fix" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const cooldown = useCooldown();
 
-  const run = async <T,>(kind: "summary" | "fix", call: () => Promise<T>, done: (r: T) => void) => {
-    setBusy(kind);
-    setError(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setFailed(false);
     try {
-      done(await call());
+      const [s, f] = await Promise.all([
+        api.aiSummary(incidentId),
+        canSuggestFix ? api.suggestFix(incidentId) : Promise.resolve(null),
+      ]);
+      setSummary(s);
+      setFix(f);
     } catch (err: unknown) {
       cooldown.trigger(err);
-      setError(err instanceof Error ? err.message : "The assistant isn’t available right now.");
+      setFailed(true);
     } finally {
-      setBusy(null);
+      setLoading(false);
     }
-  };
+  }, [incidentId, canSuggestFix, cooldown.trigger]);
 
-  const disabled = busy !== null || cooldown.coolingDown;
-  const waitLabel = cooldown.coolingDown ? ` (${cooldown.secondsLeft} s)` : "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once per ticket
+  useEffect(() => {
+    load();
+  }, [incidentId]);
 
   return (
-    <section className="card card-body" aria-labelledby="assistant-title">
+    <section className="card card-body" aria-labelledby="assistant-title" aria-busy={loading}>
       <h2 id="assistant-title" className="section-title">
         Assistant
       </h2>
-      <div className="row">
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={disabled}
-          onClick={() => run("summary", () => api.aiSummary(incidentId), setSummary)}
-        >
-          {busy === "summary" ? "Summarising…" : `Summarise${waitLabel}`}
-        </button>
-        {canSuggestFix && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={disabled}
-            onClick={() => run("fix", () => api.suggestFix(incidentId), setFix)}
-          >
-            {busy === "fix" ? "Thinking…" : `Suggest a fix${waitLabel}`}
-          </button>
-        )}
-      </div>
-      {error && (
+      {loading && <p className="field-hint">Reading the ticket…</p>}
+      {failed && !loading && (
         <p className="field-hint" role="alert">
-          {error}
+          The assistant isn’t available right now.{" "}
+          <button type="button" className="link-btn" disabled={cooldown.coolingDown} onClick={load}>
+            {cooldown.coolingDown ? `Try again in ${cooldown.secondsLeft} s` : "Try again"}
+          </button>
         </p>
       )}
       {summary && (
@@ -75,7 +69,7 @@ export function AssistantPanel({
           <p className="field-hint">From {SOURCE_LABELS[summary.source] ?? summary.source}</p>
         </div>
       )}
-      {fix && (
+      {fix && canSuggestFix && (
         <div className="assistant-result">
           <p className="callout-title">{fix.summary}</p>
           <ol className="assistant-steps">

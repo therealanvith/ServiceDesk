@@ -18,7 +18,7 @@ import {
 import { CATEGORY_LABELS, CRITICALITY_LABELS, SERVICE_HEALTH_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Wait for a pause in typing before asking the server for suggestions. */
 const DRAFT_DEBOUNCE_MS = 500;
@@ -48,6 +48,13 @@ export default function NewIncidentPage() {
   const [finishedKey, setFinishedKey] = useState(0);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
   const [triage, setTriage] = useState<TriageSuggestion | null>(null);
+  const [offered, setOffered] = useState<Category[] | null>(null);
+  // A suggestion for a category an administrator switched off is ignored.
+  const offeredRef = useRef<Category[] | null>(null);
+  const pickCategory = useCallback((c: Category) => {
+    const list = offeredRef.current;
+    if (!list || list.includes(c)) setCategory(c);
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: servicesKey re-runs the load for "Try again"
   useEffect(() => {
@@ -58,6 +65,19 @@ export default function NewIncidentPage() {
       .then(setServices)
       .catch(() => setServicesFailed(true));
   }, [user, servicesKey]);
+
+  // Only the categories an administrator has switched on are offered.
+  useEffect(() => {
+    if (!user) return;
+    api
+      .listCategories()
+      .then((list) => {
+        const active = list.filter((c) => c.active).map((c) => c.category);
+        offeredRef.current = active;
+        setOffered(active);
+      })
+      .catch(() => {});
+  }, [user]);
 
   // Known problems on a service: the reporter can check them before adding another ticket.
   useEffect(() => {
@@ -100,7 +120,7 @@ export default function NewIncidentPage() {
         .then((s) => {
           if (!active) return;
           setSuggestion(s.category ? s : null);
-          if (s.category && !categoryTouched) setCategory(s.category);
+          if (s.category && !categoryTouched) pickCategory(s.category);
         })
         .catch(() => {});
       api
@@ -112,7 +132,7 @@ export default function NewIncidentPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [title, description, user, categoryTouched]);
+  }, [title, description, user, categoryTouched, pickCategory]);
 
   const service = services.find((s) => s.id === serviceId);
   const affected = serviceStatus.find(
@@ -204,7 +224,7 @@ export default function NewIncidentPage() {
             finishedKey={finishedKey}
             onApply={(s) => {
               setTriage(s);
-              setCategory(s.category);
+              pickCategory(s.category);
               setCategoryTouched(true);
               setImpact(s.impact);
               setUrgency(s.urgency);
@@ -283,11 +303,13 @@ export default function NewIncidentPage() {
                   setCategoryTouched(true);
                 }}
               >
-                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
+                {Object.entries(CATEGORY_LABELS)
+                  .filter(([value]) => !offered || offered.includes(value as Category))
+                  .map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
               </select>
               {suggestion?.category && (
                 <span className="field-hint">
@@ -303,7 +325,7 @@ export default function NewIncidentPage() {
                         className="link-btn"
                         onClick={() => {
                           if (suggestion.category) {
-                            setCategory(suggestion.category);
+                            pickCategory(suggestion.category);
                             setCategoryTouched(true);
                           }
                         }}

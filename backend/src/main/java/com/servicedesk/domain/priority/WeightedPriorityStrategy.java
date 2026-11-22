@@ -9,9 +9,10 @@ import java.util.Objects;
  * Weighted scoring that combines impact, urgency and business criticality.
  *
  * <pre>
- * score = 2 x impact + urgency + criticality adjustment
+ * score = 2 x impact + urgency + criticality adjustment + affected-users bonus
  *   impact / urgency: HIGH = 3, MEDIUM = 2, LOW = 1
  *   criticality:      CRITICAL +2, HIGH +1, MEDIUM 0, LOW -1
+ *   affected users:   3 or more +1, 10 or more +2 (a single person adds nothing)
  *
  * score >= 8 -> P1,  7 -> P2,  5..6 -> P3,  <= 4 -> P4
  * </pre>
@@ -31,12 +32,21 @@ public class WeightedPriorityStrategy implements PriorityCalculationStrategy {
   @Override
   public Priority calculatePriority(
       Impact impact, Urgency urgency, BusinessCriticality criticality) {
+    return calculatePriority(impact, urgency, criticality, 1);
+  }
+
+  @Override
+  public Priority calculatePriority(
+      Impact impact, Urgency urgency, BusinessCriticality criticality, int affectedUsers) {
     Objects.requireNonNull(impact, "Impact must not be null");
     Objects.requireNonNull(urgency, "Urgency must not be null");
     BusinessCriticality effective = criticality != null ? criticality : BusinessCriticality.MEDIUM;
 
     int score =
-        2 * weight(impact.name()) + weight(urgency.name()) + effective.getPriorityAdjustment();
+        2 * weight(impact.name())
+            + weight(urgency.name())
+            + effective.getPriorityAdjustment()
+            + affectedBonus(affectedUsers);
     if (score >= 8) {
       return Priority.P1_CRITICAL;
     }
@@ -47,6 +57,13 @@ public class WeightedPriorityStrategy implements PriorityCalculationStrategy {
       return Priority.P3_MEDIUM;
     }
     return Priority.P4_LOW;
+  }
+
+  private static int affectedBonus(int affectedUsers) {
+    if (affectedUsers >= 10) {
+      return 2;
+    }
+    return affectedUsers >= 3 ? 1 : 0;
   }
 
   private static int weight(String level) {

@@ -59,10 +59,22 @@ Gemini answers when `GEMINI_API_KEY` is set; otherwise, or when it fails, the ru
 | `POST` | `/incidents/triage` | Any authenticated | `TriageRequest` | `TriageResponse` | `200 OK`, `400 Bad Request`, `429` | Suggested category, impact, urgency and service for a ticket being written, the priority that would give, and a one-line reason. |
 | `POST` | `/incidents/self-help` | Any authenticated | `TriageRequest` | `AdviceResponse` | `200 OK`, `400 Bad Request`, `429` | Up to four steps to try before filing. Built from the fix text of similar resolved tickets only, never their number, title or reporter. |
 | `POST` | `/incidents/self-help/feedback` | Any authenticated | `SelfHelpFeedbackRequest` | *None* | `204 No Content`, `400 Bad Request` | Records whether the steps solved the problem (`self_help_feedback`; feeds the deflection trend). |
-| `POST` | `/incidents/{id}/ai/suggest-fix` | `TECHNICIAN`, `ADMINISTRATOR`, `ROOT` (ticket must be visible to them) | *None* | `AdviceResponse` | `200 OK`, `403 Forbidden`, `404 Not Found`, `429` | Draft fix from the ticket, its thread and similar resolved tickets. |
+| `POST` | `/incidents/{id}/ai/suggest-fix` | Any authenticated (the ticket must be visible to them; a reporter's answer is built from public text only) | *None* | `AdviceResponse` | `200 OK`, `403 Forbidden`, `404 Not Found`, `429` | Draft fix from the ticket, its thread and similar resolved tickets. |
 | `POST` | `/incidents/{id}/ai/summary` | `TECHNICIAN`, `ADMINISTRATOR`, `ROOT` (ticket must be visible to them) | *None* | `SummaryResponse` | `200 OK`, `403 Forbidden`, `404 Not Found`, `429` | Short summary of the ticket and its history. |
 
 `POST /incidents` also accepts two optional fields: `aiSuggestionAccepted` (the reporter kept the assistant's classification; noted in the audit) and `relatedIncidentId` (from "This affects me too": the new ticket is linked under that issue if it is still open and is itself a main ticket).
+
+### 3.1.1 Help chat, "affects me too", categories (`/api/v1/assistant`, `/api/v1/issues`, `/api/v1/catalog`)
+
+| Method | Endpoint | Allowed Roles | Request DTO | Response DTO | HTTP Status | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/assistant/chat` | Any authenticated | `ChatRequest` (1 to 12 messages, each up to 1000 characters, `fromUser` flag) | `ChatResponse` (`reply`, `source`) | `200 OK`, `400`, `429` | A reply from Gemini, or from the on-device knowledge base when Gemini is unavailable. Knows the caller's own tickets, never anyone else's. |
+| `POST` | `/issues/{id}/affected` | Any authenticated | *None* | `PublicIssueResponse` | `200 OK`, `400` (already fixed), `404` | "This affects me too": counts the caller on the open main ticket without creating a ticket. Idempotent; the reporter is already counted. Notifies the assignee and may raise the priority. |
+| `DELETE` | `/issues/{id}/affected` | Any authenticated | *None* | `PublicIssueResponse` | `200 OK` | Stops following the issue. |
+| `GET` | `/catalog/categories` | Any authenticated | *None* | `List<CategorySettingResponse>` | `200 OK` | Every category and whether reporters can choose it. |
+| `PUT` | `/catalog/categories/{category}` | `ADMINISTRATOR`, `ROOT` | `UpdateCategorySettingRequest` (`active`) | `CategorySettingResponse` | `200 OK`, `400` (last active category), `403` | Switch a category on or off. Existing tickets keep it; creating a ticket in an off category returns 400. |
+
+Other changes: `GET /users/technicians` is also open to technicians who are team leads, and `POST /incidents/{id}/assign` to team leads (other technicians get 403). `UserProfileResponse` carries `teamLead` and `avatar` (the Google picture URL, or null). `IncidentSummaryResponse` carries `joined` (the caller follows the issue and did not report it; the reporter name is then "Another user"). `PublicIssueResponse` carries `affectedCount` and `affectedByMe`. `TriageResponse` and `AdviceResponse` carry `itRelated` (false when the text is not about technology). `relatedIncidentId` on `POST /incidents` is still accepted for compatibility, but the web app now uses `/issues/{id}/affected`.
 
 ### 3.2 All issues, read-only (`/api/v1/issues`)
 
