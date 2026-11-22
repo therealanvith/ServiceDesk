@@ -137,8 +137,8 @@ public class IncidentController {
     return ResponseEntity.noContent().build();
   }
 
+  /** A quick fix for a ticket the caller can see (their own, or one they work). */
   @PostMapping("/{id}/ai/suggest-fix")
-  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<AdviceResponse> suggestFix(@PathVariable UUID id, Principal principal) {
     return ResponseEntity.ok(assistant.suggestFix(id, principal.getName()));
   }
@@ -164,7 +164,7 @@ public class IncidentController {
   }
 
   @PostMapping("/{id}/assign")
-  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
   public ResponseEntity<IncidentDetailResponse> assignIncident(
       @PathVariable UUID id,
       @RequestBody(required = false) AssignIncidentRequest request,

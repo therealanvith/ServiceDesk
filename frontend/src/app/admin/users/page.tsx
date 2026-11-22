@@ -29,10 +29,8 @@ export default function UsersPage() {
   const [emailEdit, setEmailEdit] = useState<{ id: string; value: string } | null>(null);
 
   const isRoot = user?.role === "ROOT";
-  // Administrators manage employees and technicians; root can also grant administrator access.
-  const grantable: Role[] = isRoot
-    ? ["EMPLOYEE", "TECHNICIAN", "ADMINISTRATOR"]
-    : ["EMPLOYEE", "TECHNICIAN"];
+  // Administrators can grant any role except root; only root can later change an administrator.
+  const grantable: Role[] = ["EMPLOYEE", "TECHNICIAN", "ADMINISTRATOR"];
 
   const load = useCallback(() => {
     setLoadFailed(false);
@@ -129,7 +127,7 @@ export default function UsersPage() {
           <h1>Users</h1>
           <p>
             People who sign in with Google start as employees. Change their role here.
-            {isRoot ? "" : " Only root can grant administrator access."}
+            {isRoot ? "" : " Once someone is an administrator, only root can change their role."}
           </p>
         </div>
       </div>

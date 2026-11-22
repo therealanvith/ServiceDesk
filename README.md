@@ -74,7 +74,8 @@ Ensure the following tools are installed on your workstation:
 
    **Root account**: created on first start from `ROOT_USERNAME` / `ROOT_PASSWORD` in `.env`
    (see `.env.example`; at least 12 characters). Root can do everything an administrator can,
-   and is the only role that can grant or remove administrator access.
+   and is the only role that can change or demote an administrator. Administrators can promote
+   people to administrator.
 
    **Google sign-in**: create an OAuth 2.0 *Web application* client in Google Cloud Console,
    add `http://localhost:3000` to its *Authorized JavaScript origins*, put the client id in

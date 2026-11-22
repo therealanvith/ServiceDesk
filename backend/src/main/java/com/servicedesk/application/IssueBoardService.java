@@ -13,6 +13,7 @@ import com.servicedesk.domain.user.User;
 import com.servicedesk.domain.user.UserId;
 import com.servicedesk.infrastructure.persistence.entity.IncidentCommentEntity;
 import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentAffectedJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentCommentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataItServiceJpaRepository;
 import java.util.HashMap;
@@ -38,19 +39,24 @@ public class IssueBoardService {
   private final UserRepository users;
   private final SpringDataIncidentCommentJpaRepository comments;
   private final SpringDataItServiceJpaRepository services;
+  private final SpringDataIncidentAffectedJpaRepository affected;
 
   public IssueBoardService(
       IncidentRepository incidents,
       UserRepository users,
       SpringDataIncidentCommentJpaRepository comments,
-      SpringDataItServiceJpaRepository services) {
+      SpringDataItServiceJpaRepository services,
+      SpringDataIncidentAffectedJpaRepository affected) {
     this.incidents = incidents;
     this.users = users;
     this.comments = comments;
     this.services = services;
+    this.affected = affected;
   }
 
-  public PagedResponse<PublicIssueResponse> list(IncidentFilter filter, int page, int size) {
+  public PagedResponse<PublicIssueResponse> list(
+      IncidentFilter filter, int page, int size, String username) {
+    UserId me = users.findByUsername(username).map(User::getId).orElse(null);
     // Reporter and assignee criteria are not part of the public view.
     IncidentFilter publicFilter =
         new IncidentFilter(
@@ -80,13 +86,15 @@ public class IssueBoardService {
                         serviceNames,
                         names,
                         comments.countByIncidentIdAndInternalFalse(inc.getId().getValue()),
+                        me,
                         List.of()))
             .toList();
     return new PagedResponse<>(
         content, pageOf.page(), pageOf.size(), pageOf.totalElements(), pageOf.totalPages());
   }
 
-  public PublicIssueResponse get(UUID id) {
+  public PublicIssueResponse get(UUID id, String username) {
+    UserId me = users.findByUsername(username).map(User::getId).orElse(null);
     Incident incident =
         incidents
             .findById(IncidentId.of(id))
@@ -108,7 +116,7 @@ public class IssueBoardService {
                       c.getCreatedAt());
                 })
             .toList();
-    return toResponse(incident, serviceNames(), new HashMap<>(), updates.size(), updates);
+    return toResponse(incident, serviceNames(), new HashMap<>(), updates.size(), me, updates);
   }
 
   private PublicIssueResponse toResponse(
@@ -116,6 +124,7 @@ public class IssueBoardService {
       Map<UUID, String> serviceNames,
       Map<UserId, String> names,
       long updateCount,
+      UserId me,
       List<PublicUpdate> updates) {
     String handledBy =
         incident.getAssigneeId() == null
@@ -123,6 +132,14 @@ public class IssueBoardService {
             : names.computeIfAbsent(
                 incident.getAssigneeId(),
                 id -> users.findById(id).map(User::getFullName).orElse(null));
+    UUID id = incident.getId().getValue();
+    List<Incident> linked = incidents.findChildren(incident.getId());
+    long affectedRows = affected.countByIncidentId(id);
+    boolean mine =
+        me != null
+            && (incident.getReporterId().equals(me)
+                || affected.existsByIncidentIdAndUserId(id, me.getValue())
+                || linked.stream().anyMatch(c -> c.getReporterId().equals(me)));
     return new PublicIssueResponse(
         incident.getId().getValue(),
         incident.getIncidentNumber(),
@@ -138,6 +155,8 @@ public class IssueBoardService {
         incident.getCreatedAt(),
         incident.getUpdatedAt(),
         updateCount,
+        1 + linked.size() + affectedRows,
+        mine,
         updates);
   }
 

@@ -25,6 +25,8 @@ public record PublicIssueResponse(
     Instant createdAt,
     Instant updatedAt,
     long updateCount,
+    long affectedCount,
+    boolean affectedByMe,
     List<PublicUpdate> updates) {
 
   /** One public entry; {@code author} is "Reporter" for the person who raised the issue. */

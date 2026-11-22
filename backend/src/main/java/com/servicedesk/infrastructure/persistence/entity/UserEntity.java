@@ -55,6 +55,17 @@ public class UserEntity {
   @Column(name = "is_team_lead", nullable = false)
   private boolean teamLead = false;
 
+  @Column(name = "avatar")
+  private String avatar;
+
+  public String getAvatar() {
+    return avatar;
+  }
+
+  public void setAvatar(String avatar) {
+    this.avatar = avatar;
+  }
+
   public int getMaxActiveTickets() {
     return maxActiveTickets;
   }

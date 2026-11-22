@@ -4,6 +4,7 @@ import { AssistantPanel } from "@/components/AssistantPanel";
 import { AuditTimeline } from "@/components/AuditTimeline";
 import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
+import { QuickFix } from "@/components/QuickFix";
 import { SimilarIncidentsPanel } from "@/components/SimilarIncidentsPanel";
 import { SkeletonBlock } from "@/components/Skeleton";
 import { SlaBadge } from "@/components/SlaBadge";
@@ -276,6 +277,11 @@ export default function IncidentDetailPage() {
               onLinked={refresh}
             />
           )}
+          {currentUserRole === "EMPLOYEE" &&
+            isReporter &&
+            !["RESOLVED", "CLOSED", "CANCELLED"].includes(incident.status) && (
+              <QuickFix incidentId={incident.id} />
+            )}
           {currentUserRole !== "EMPLOYEE" && (
             <AssistantPanel
               incidentId={incident.id}
@@ -425,6 +431,7 @@ export default function IncidentDetailPage() {
             currentUserRole={currentUserRole}
             isReporter={isReporter}
             isAssignee={Boolean(user && incident.assignee?.id === user.id)}
+            isTeamLead={Boolean(user?.teamLead)}
             dialogRequest={dialogRequest}
             onUpdate={(updated) => {
               // The action succeeded: show the confirmed ticket and refresh only the panels.

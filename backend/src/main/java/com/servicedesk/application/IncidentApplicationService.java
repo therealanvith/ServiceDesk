@@ -61,19 +61,23 @@ import com.servicedesk.domain.user.Role;
 import com.servicedesk.domain.user.User;
 import com.servicedesk.domain.user.UserId;
 import com.servicedesk.infrastructure.live.LiveEventBroadcaster;
+import com.servicedesk.infrastructure.persistence.entity.IncidentAffectedEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentCommentEntity;
 import com.servicedesk.infrastructure.persistence.entity.IncidentEntity;
 import com.servicedesk.infrastructure.persistence.entity.ItServiceEntity;
 import com.servicedesk.infrastructure.persistence.entity.UserEntity;
+import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentAffectedJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentCommentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataIncidentJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataItServiceJpaRepository;
 import com.servicedesk.infrastructure.persistence.repository.SpringDataUserJpaRepository;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -99,6 +103,7 @@ public class IncidentApplicationService {
   private final CategorySuggestionStrategy categorySuggester;
   private final SpringDataItServiceJpaRepository serviceRepository;
   private final LiveEventBroadcaster liveEvents;
+  private final SpringDataIncidentAffectedJpaRepository affectedRepository;
 
   private static final int MAX_PAGE_SIZE = 100;
 
@@ -118,7 +123,9 @@ public class IncidentApplicationService {
       SlaPolicyProvider slaPolicies,
       SpringDataItServiceJpaRepository serviceRepository,
       PriorityCalculationStrategy priorityStrategy,
-      LiveEventBroadcaster liveEvents) {
+      LiveEventBroadcaster liveEvents,
+      SpringDataIncidentAffectedJpaRepository affectedRepository) {
+    this.affectedRepository = affectedRepository;
     this.liveEvents = liveEvents;
     this.incidentRepository = incidentRepository;
     this.serviceRepository = serviceRepository;
@@ -286,7 +293,7 @@ public class IncidentApplicationService {
   public IncidentDetailResponse assignIncident(
       UUID incidentId, AssignIncidentRequest request, String actorUsername) {
     User actor = loadUser(actorUsername);
-    requireAdmin(actor, "assign incidents");
+    requireAdminOrTeamLead(actor, "assign incidents");
     Incident incident = loadVisibleIncident(incidentId, actor);
 
     UserId targetTechId;
@@ -497,8 +504,82 @@ public class IncidentApplicationService {
             "Resolution: " + request.resolutionSummary()));
 
     resolveLinkedTickets(saved, actor, request.resolutionSummary());
+    notifyAffected(saved, "Fixed: " + request.resolutionSummary());
     broadcastChange(saved);
     return toDetailResponse(saved);
+  }
+
+  /**
+   * "This affects me too" without a new ticket: the caller is counted on the open main ticket and
+   * told when it is fixed. Counting twice, or on one's own ticket, changes nothing.
+   */
+  @Transactional
+  public void markAffected(UUID incidentId, String username) {
+    User user = loadUser(username);
+    Incident issue = mainTicket(incidentId);
+    if (!isOpen(issue.getStatus())) {
+      throw new IllegalArgumentException(
+          "That issue has already been fixed; report this as a new problem instead");
+    }
+    UUID issueId = issue.getId().getValue();
+    boolean already =
+        issue.getReporterId().equals(user.getId())
+            || affectedRepository.existsByIncidentIdAndUserId(issueId, user.getId().getValue());
+    if (already) {
+      return;
+    }
+    affectedRepository.save(
+        new IncidentAffectedEntity(issueId, user.getId().getValue(), clock.instant()));
+    if (issue.getAssigneeId() != null) {
+      notifyChannels(
+          NotificationMessage.of(
+              issue.getAssigneeId(),
+              issue.getId(),
+              "AFFECTED",
+              "More people affected: " + issue.getIncidentNumber(),
+              "Another person says this affects them too ("
+                  + (1 + affectedRepository.countByIncidentId(issueId))
+                  + "+ affected)."));
+    }
+    broadcastChange(issue);
+  }
+
+  @Transactional
+  public void unmarkAffected(UUID incidentId, String username) {
+    User user = loadUser(username);
+    Incident issue = mainTicket(incidentId);
+    UUID userId = user.getId().getValue();
+    if (affectedRepository.existsByIncidentIdAndUserId(issue.getId().getValue(), userId)) {
+      affectedRepository.deleteById(
+          new IncidentAffectedEntity.Key(issue.getId().getValue(), userId));
+    }
+  }
+
+  private Incident mainTicket(UUID incidentId) {
+    Incident issue =
+        incidentRepository
+            .findById(IncidentId.of(incidentId))
+            .orElseThrow(() -> new IncidentNotFoundException("Incident not found: " + incidentId));
+    // A linked ticket points at its main ticket: that is the one people join.
+    if (issue.getParentIncidentId() != null) {
+      return incidentRepository
+          .findById(issue.getParentIncidentId())
+          .orElseThrow(() -> new IncidentNotFoundException("Incident not found: " + incidentId));
+    }
+    return issue;
+  }
+
+  private void notifyAffected(Incident issue, String detail) {
+    for (IncidentAffectedEntity row :
+        affectedRepository.findByIncidentId(issue.getId().getValue())) {
+      notifyChannels(
+          NotificationMessage.of(
+              UserId.of(row.getUserId()),
+              issue.getId(),
+              "RESOLVED",
+              "Issue fixed: " + issue.getIncidentNumber(),
+              detail));
+    }
   }
 
   /** Every open ticket linked under a major incident is resolved with it, and its reporter told. */
@@ -794,6 +875,28 @@ public class IncidentApplicationService {
     IncidentFilter effectiveFilter = scopeToRole(filter, requester);
 
     List<Incident> allMatching = incidentRepository.findWithFilters(effectiveFilter);
+    // Issues the employee joined with "this affects me too" sit beside the ones they reported.
+    Set<UUID> joinedIds = new HashSet<>();
+    if (requester.getRole() == Role.EMPLOYEE) {
+      affectedRepository
+          .findByUserId(requester.getId().getValue())
+          .forEach(row -> joinedIds.add(row.getIncidentId()));
+      if (!joinedIds.isEmpty()) {
+        Set<UUID> have = new HashSet<>();
+        for (Incident inc : allMatching) {
+          have.add(inc.getId().getValue());
+        }
+        List<Incident> merged = new ArrayList<>(allMatching);
+        incidentRepository.findWithFilters(effectiveFilter.unscoped()).stream()
+            .filter(
+                inc ->
+                    joinedIds.contains(inc.getId().getValue())
+                        && !have.contains(inc.getId().getValue()))
+            .forEach(merged::add);
+        merged.sort(Comparator.comparing(Incident::getCreatedAt).reversed());
+        allMatching = merged;
+      }
+    }
     PagedResponse<Incident> pageOfIncidents =
         PagedResponse.of(allMatching, page, Math.min(Math.max(size, 1), MAX_PAGE_SIZE));
 
@@ -803,7 +906,14 @@ public class IncidentApplicationService {
     serviceRepository.findAll().forEach(s -> serviceNames.put(s.getId(), s.getName()));
     List<IncidentSummaryResponse> content =
         pageOfIncidents.content().stream()
-            .map(inc -> toSummaryResponse(inc, names, serviceNames))
+            .map(
+                inc -> {
+                  IncidentSummaryResponse row = toSummaryResponse(inc, names, serviceNames);
+                  boolean followed =
+                      joinedIds.contains(inc.getId().getValue())
+                          && !inc.getReporterId().equals(requester.getId());
+                  return followed ? row.asJoined() : row;
+                })
             .toList();
 
     return new PagedResponse<>(
@@ -1018,9 +1128,13 @@ public class IncidentApplicationService {
   /** A ticket the user may see, flattened for the assistant (staff endpoints only). */
   @Transactional(readOnly = true)
   public TicketContext assistantContext(UUID incidentId, String username) {
-    Incident incident = loadVisibleIncident(incidentId, loadUser(username));
+    User viewer = loadUser(username);
+    Incident incident = loadVisibleIncident(incidentId, viewer);
+    // Staff see the whole thread; the reporter only gets what is public.
+    boolean staff = viewer.getRole() != Role.EMPLOYEE;
     List<String> timeline =
         commentJpaRepository.findByIncidentIdOrderByCreatedAtAsc(incidentId).stream()
+            .filter(c -> staff || !c.isInternal())
             .map(
                 c ->
                     (c.isInternal() ? "Internal note" : c.getKind().name())
@@ -1040,6 +1154,25 @@ public class IncidentApplicationService {
         incident.getStatus().name(),
         incident.getPriority().name(),
         timeline);
+  }
+
+  /** The caller's own tickets as short lines, newest first, for the help chat. */
+  @Transactional(readOnly = true)
+  public List<String> myTicketLines(String username) {
+    User me = loadUser(username);
+    return incidentRepository
+        .findWithFilters(IncidentFilter.empty().withReporter(me.getId()))
+        .stream()
+        .sorted(Comparator.comparing(Incident::getCreatedAt).reversed())
+        .limit(10)
+        .map(
+            i ->
+                i.getIncidentNumber()
+                    + " \""
+                    + i.getTitle()
+                    + "\" is "
+                    + i.getStatus().name().toLowerCase(Locale.ROOT).replace('_', ' '))
+        .toList();
   }
 
   /** How the closest resolved tickets were fixed, best match first (at most three). */
@@ -1174,7 +1307,9 @@ public class IncidentApplicationService {
    * and everyone sees the tickets they reported.
    */
   private boolean canView(Incident incident, User user) {
-    if (user.getRole().hasAdminRights() || user.getId().equals(incident.getReporterId())) {
+    if (user.getRole().hasAdminRights()
+        || isTeamLead(user)
+        || user.getId().equals(incident.getReporterId())) {
       return true;
     }
     return user.getRole() == Role.TECHNICIAN && user.getId().equals(incident.getAssigneeId());
@@ -1192,12 +1327,25 @@ public class IncidentApplicationService {
   private IncidentFilter scopeToRole(IncidentFilter filter, User requester) {
     IncidentFilter base =
         filter != null ? filter : new IncidentFilter(null, null, null, null, null, null, null);
+    if (isTeamLead(requester)) {
+      return base; // the team lead sees every ticket in order to reassign them
+    }
     return switch (requester.getRole()) {
       case ADMINISTRATOR, ROOT -> base;
         // A technician's worklist: tickets assigned to them, plus any they reported themselves.
       case TECHNICIAN -> base.withParticipant(requester.getId());
       case EMPLOYEE -> base.withReporter(requester.getId());
     };
+  }
+
+  private static boolean isTeamLead(User user) {
+    return user.getRole() == Role.TECHNICIAN && user.isTeamLead();
+  }
+
+  private void requireAdminOrTeamLead(User actor, String action) {
+    if (!actor.getRole().hasAdminRights() && !isTeamLead(actor)) {
+      throw new UnauthorizedOperationException("Only an administrator or team lead can " + action);
+    }
   }
 
   private void requireAdmin(User actor, String action) {
@@ -1343,6 +1491,7 @@ public class IncidentApplicationService {
             ? serviceNames.get(incident.getAffectedServiceId())
             : null,
         incident.getAssigneeId() != null ? incident.getAssigneeId().getValue() : null,
-        incident.getResolvedAt());
+        incident.getResolvedAt(),
+        false);
   }
 }

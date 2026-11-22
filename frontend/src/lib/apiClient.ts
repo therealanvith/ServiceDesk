@@ -56,6 +56,8 @@ export interface UserProfile {
   mustChangePassword: boolean;
   googleLinked: boolean;
   hasPassword: boolean;
+  teamLead: boolean;
+  avatar: string | null;
 }
 
 export interface AuthResult {
@@ -135,6 +137,8 @@ export interface IncidentSummary {
   serviceName: string | null;
   assigneeId: string | null;
   resolvedAt: string | null;
+  /** The viewer follows this issue ("affects me too") but did not report it. */
+  joined: boolean;
 }
 
 export interface PagedResponse<T> {
@@ -172,6 +176,9 @@ export interface PublicIssue {
   createdAt: string;
   updatedAt: string;
   updateCount: number;
+  /** How many people say they are affected, the reporter included. */
+  affectedCount: number;
+  affectedByMe: boolean;
   updates: {
     id: string;
     kind: UpdateKind;
@@ -221,12 +228,16 @@ export interface TriageSuggestion {
   predictedPriority: Priority;
   reason: string;
   source: string;
+  /** False when the text is not about technology. */
+  itRelated: boolean;
 }
 
 export interface AssistantAdvice {
   summary: string;
   steps: string[];
   source: string;
+  /** False when the text is not about technology; steps are then empty. */
+  itRelated: boolean;
 }
 
 export interface AssistantSummary {
@@ -566,8 +577,6 @@ export const api = {
     urgency: Urgency;
     serviceId?: string;
     aiSuggestionAccepted?: boolean;
-    /** Set from "This affects me too": the open issue this report joins. */
-    relatedIncidentId?: string;
   }) => apiClient<IncidentDetail>("/incidents", post(data)),
 
   // Assistant (Gemini, or built-in rules when it isn't configured)
@@ -639,6 +648,11 @@ export const api = {
     return apiClient<PagedResponse<PublicIssue>>(`/issues${qs ? `?${qs}` : ""}`);
   },
   getIssue: (id: string) => apiClient<PublicIssue>(`/issues/${id}`),
+  markAffected: (id: string) => apiClient<PublicIssue>(`/issues/${id}/affected`, post()),
+  unmarkAffected: (id: string) =>
+    apiClient<PublicIssue>(`/issues/${id}/affected`, { method: "DELETE" }),
+  chat: (messages: { text: string; fromUser: boolean }[]) =>
+    apiClient<{ reply: string; source: string }>("/assistant/chat", post({ messages })),
 
   // Comments
   addComment: (id: string, commentText: string, isInternal: boolean) =>

@@ -124,12 +124,6 @@ class UserAccessPersistenceTest {
                 .with(user("boss").roles("ADMINISTRATOR"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"role\":\"ADMINISTRATOR\"}"))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            put("/api/v1/users/" + employee.getId() + "/role")
-                .with(user("root").roles("ROOT"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"role\":\"ADMINISTRATOR\"}"))
         .andExpect(status().isOk());
     // Now an administrator, so other administrators can no longer change it.
     mvc.perform(

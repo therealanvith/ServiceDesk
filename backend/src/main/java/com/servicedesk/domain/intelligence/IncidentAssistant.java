@@ -24,6 +24,15 @@ public interface IncidentAssistant {
 
   String summarize(TicketContext ticket);
 
+  /**
+   * One reply in the help chat. {@code context} lists the signed-in person's own tickets as plain
+   * lines, so they can ask about them.
+   */
+  String chat(List<ChatTurn> conversation, List<String> context);
+
+  /** One message in the help chat. */
+  record ChatTurn(boolean fromUser, String text) {}
+
   /** What a reporter has typed so far. */
   record TicketDraft(String title, String description) {}
 
@@ -45,7 +54,26 @@ public interface IncidentAssistant {
    * @param reason one short sentence explaining the classification
    */
   record TriageSuggestion(
-      Category category, Impact impact, Urgency urgency, String serviceName, String reason) {}
+      Category category,
+      Impact impact,
+      Urgency urgency,
+      String serviceName,
+      String reason,
+      boolean itRelated) {
 
-  record AssistantAdvice(String summary, List<String> steps) {}
+    public TriageSuggestion(
+        Category category, Impact impact, Urgency urgency, String serviceName, String reason) {
+      this(category, impact, urgency, serviceName, reason, true);
+    }
+  }
+
+  /**
+   * {@code itRelated} is false when the text is not about technology at all; steps are then empty.
+   */
+  record AssistantAdvice(String summary, List<String> steps, boolean itRelated) {
+
+    public AssistantAdvice(String summary, List<String> steps) {
+      this(summary, steps, true);
+    }
+  }
 }

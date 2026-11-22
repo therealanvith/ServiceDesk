@@ -137,6 +137,8 @@ public class RuleBasedIncidentAssistant implements IncidentAssistant {
         break;
       }
     }
+    var article = KnowledgeBase.best(draft.title() + " " + draft.description());
+    article.ifPresent(a -> a.steps().stream().limit(4 - steps.size()).forEach(steps::add));
     for (String generic : GENERIC_STEPS.get(category)) {
       if (steps.size() >= 4) {
         break;
@@ -144,15 +146,23 @@ public class RuleBasedIncidentAssistant implements IncidentAssistant {
       steps.add(generic);
     }
     String summary =
-        pastFixes.isEmpty()
-            ? "These usually fix " + category.name().toLowerCase(Locale.ROOT) + " problems."
-            : "Similar problems were fixed by these steps.";
+        !pastFixes.isEmpty()
+            ? "Similar problems were fixed by these steps."
+            : article
+                .map(KnowledgeBase.Article::summary)
+                .orElse(
+                    "These usually fix " + category.name().toLowerCase(Locale.ROOT) + " problems.");
     return new AssistantAdvice(summary, List.copyOf(steps));
   }
 
   @Override
   public AssistantAdvice suggestFix(TicketContext ticket, List<PastFix> similarResolved) {
     if (similarResolved.isEmpty()) {
+      var article = KnowledgeBase.best(ticket.title() + " " + ticket.description());
+      if (article.isPresent()) {
+        return new AssistantAdvice(
+            article.get().title() + ": " + article.get().summary(), article.get().steps());
+      }
       Category category = parseCategory(ticket.category());
       return new AssistantAdvice(
           "No similar ticket has been resolved yet. Standard first checks:",
@@ -183,6 +193,35 @@ public class RuleBasedIncidentAssistant implements IncidentAssistant {
     } else {
       out.append(timeline.size()).append(" update(s). Latest: ").append(timeline.getLast());
     }
+    return out.toString();
+  }
+
+  @Override
+  public String chat(List<ChatTurn> conversation, List<String> context) {
+    String last =
+        conversation.stream()
+            .filter(ChatTurn::fromUser)
+            .reduce((a, b) -> b)
+            .map(ChatTurn::text)
+            .orElse("");
+    String lower = last.toLowerCase(Locale.ROOT);
+    if ((lower.contains("my ticket") || lower.contains("status") || lower.contains("my issue"))
+        && !context.isEmpty()) {
+      return "Here are your tickets:\n" + String.join("\n", context);
+    }
+    var matches = KnowledgeBase.search(last, 1);
+    if (matches.isEmpty()) {
+      return "I can help with Wi-Fi, VPN, printers, passwords, email, monitors, slow computers and"
+          + " similar problems. Tell me what is happening, or report it from New ticket and the"
+          + " team will pick it up.";
+    }
+    var article = matches.getFirst();
+    StringBuilder out = new StringBuilder(article.summary()).append("\n");
+    int n = 1;
+    for (String step : article.steps()) {
+      out.append(n++).append(". ").append(step).append("\n");
+    }
+    out.append(article.escalate());
     return out.toString();
   }
 

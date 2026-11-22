@@ -4,6 +4,7 @@ import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.priority.Priority;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -30,11 +31,32 @@ public final class AssistantDtos {
       String serviceName,
       Priority predictedPriority,
       String reason,
-      String source) {}
+      String source,
+      boolean itRelated) {}
 
-  public record AdviceResponse(String summary, List<String> steps, String source) {}
+  /** {@code itRelated} is false when the text is not an IT problem; steps are then empty. */
+  public record AdviceResponse(
+      String summary, List<String> steps, String source, boolean itRelated) {
+
+    public AdviceResponse(String summary, List<String> steps, String source) {
+      this(summary, steps, source, true);
+    }
+  }
 
   public record SummaryResponse(String summary, String source) {}
+
+  /** One message in the help chat. */
+  public record ChatMessage(
+      @NotBlank(message = "Say something first")
+          @Size(max = 1000, message = "Messages must not exceed 1000 characters")
+          String text,
+      boolean fromUser) {}
+
+  public record ChatRequest(
+      @NotNull @Size(min = 1, max = 12, message = "Send between 1 and 12 messages")
+          List<@Valid ChatMessage> messages) {}
+
+  public record ChatResponse(String reply, String source) {}
 
   public record SelfHelpFeedbackRequest(
       @NotNull(message = "Say whether it helped") Boolean helped) {}

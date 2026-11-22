@@ -4,7 +4,7 @@ import { type AssistantAdvice, type TriageSuggestion, api } from "@/lib/apiClien
 import { CATEGORY_LABELS, PRIORITY_LABELS } from "@/lib/labels";
 import { useCooldown } from "@/lib/useCooldown";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export const SOURCE_LABELS: Record<string, string> = {
   gemini: "Gemini",
@@ -12,16 +12,20 @@ export const SOURCE_LABELS: Record<string, string> = {
 };
 
 /**
- * The assistant on the report form: "Suggest details" fills in category, impact, urgency and
- * service; "Try this first" offers steps that may fix the problem without a ticket.
+ * The assistant on the report form. A quick fix appears by itself once the reporter finishes the
+ * description and moves on (`finishedKey` changes); "Suggest details" fills in category, impact,
+ * urgency and service when asked.
  */
 export function AssistantHelper({
   title,
   description,
+  finishedKey,
   onApply,
 }: {
   title: string;
   description: string;
+  /** Bumped each time the reporter leaves the description box. */
+  finishedKey: number;
   onApply: (suggestion: TriageSuggestion) => void;
 }) {
   const [triage, setTriage] = useState<TriageSuggestion | null>(null);
@@ -57,7 +61,13 @@ export function AssistantHelper({
       }
     );
 
-  const tryFirst = () =>
+  // Ask once per finished description; the same text never asks twice.
+  const askedFor = useRef("");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a finished description triggers it
+  useEffect(() => {
+    const text = `${title.trim()}\n${description.trim()}`;
+    if (finishedKey === 0 || !ready || text === askedFor.current) return;
+    askedFor.current = text;
     run(
       "help",
       () => api.selfHelp(title.trim(), description.trim()),
@@ -66,6 +76,7 @@ export function AssistantHelper({
         setOutcome(null);
       }
     );
+  }, [finishedKey]);
 
   const answer = (helped: boolean) => {
     setOutcome(helped ? "fixed" : "dismissed");
@@ -81,9 +92,7 @@ export function AssistantHelper({
         <button type="button" className="btn btn-sm" disabled={disabled} onClick={suggest}>
           {busy === "triage" ? "Thinking…" : `Suggest details${waitLabel}`}
         </button>
-        <button type="button" className="btn btn-sm" disabled={disabled} onClick={tryFirst}>
-          {busy === "help" ? "Looking…" : `Try this first${waitLabel}`}
-        </button>
+        {busy === "help" && <span className="field-hint">Looking for a quick fix…</span>}
         {!ready && <span className="field-hint">Describe the problem to get help.</span>}
       </div>
 
@@ -96,15 +105,29 @@ export function AssistantHelper({
       {triage && (
         <output className="callout assistant-note">
           <p className="callout-title">
-            Suggested by {SOURCE_LABELS[triage.source] ?? triage.source}:{" "}
+            Filled in by {SOURCE_LABELS[triage.source] ?? triage.source}:{" "}
             {CATEGORY_LABELS[triage.category]}, {PRIORITY_LABELS[triage.predictedPriority]}
             {triage.serviceName ? ` on ${triage.serviceName}` : ""}
           </p>
-          <p className="field-hint">{triage.reason} You can change anything below.</p>
+          <p className="field-hint">
+            {triage.itRelated
+              ? "You can change anything below."
+              : "This doesn’t look like an IT problem."}
+          </p>
         </output>
       )}
 
-      {advice && outcome !== "dismissed" && (
+      {advice && !advice.itRelated && (
+        <output className="callout callout-warn">
+          <p className="callout-title">This doesn’t look like an IT problem</p>
+          <p className="field-hint">
+            The service desk handles computers, software, networks, accounts and devices. Check that
+            you’re describing a technical problem before you submit.
+          </p>
+        </output>
+      )}
+
+      {advice?.itRelated && outcome !== "dismissed" && (
         <section className="callout assistant-help" aria-label="Try this first">
           {outcome === "fixed" ? (
             <>

@@ -163,7 +163,8 @@ public class UserApplicationService {
       if (!user.isActive()) {
         throw new BadCredentialsException("Your account has been disabled.");
       }
-      return issueSession(user);
+      user.setAvatar(identity.picture());
+      return issueSession(userJpaRepository.save(user));
     }
 
     if (userJpaRepository.findByEmailIgnoreCase(identity.email()).isPresent()) {
@@ -190,6 +191,7 @@ public class UserApplicationService {
             clock.instant(),
             clock.instant());
     created.setGoogleSub(identity.subject());
+    created.setAvatar(identity.picture());
     UserEntity saved = userJpaRepository.save(created);
     announceNewUser(saved, "signed in with Google for the first time");
     return issueSession(saved);
@@ -214,6 +216,7 @@ public class UserApplicationService {
                   "This Google account is already linked to another user");
             });
     user.setGoogleSub(identity.subject());
+    user.setAvatar(identity.picture());
     user.setUpdatedAt(clock.instant());
     return toProfileResponse(userJpaRepository.save(user));
   }
@@ -252,7 +255,7 @@ public class UserApplicationService {
   }
 
   public UserAccountResponse createUser(CreateUserRequest request, String actorUsername) {
-    requireMayGrant(actorRole(actorUsername), request.role());
+    requireMayGrant(request.role());
     UserAccountResponse created =
         createAccount(
             request.username(),
@@ -297,7 +300,7 @@ public class UserApplicationService {
 
   public UserAccountResponse updateRole(UUID userId, Role role, String actorUsername) {
     UserEntity user = loadManageableUser(userId, actorUsername);
-    requireMayGrant(actorRole(actorUsername), role);
+    requireMayGrant(role);
     if (user.getRole() == Role.TECHNICIAN && role != Role.TECHNICIAN) {
       // Skills only mean something for technicians.
       user.getSkills().clear();
@@ -352,15 +355,12 @@ public class UserApplicationService {
   }
 
   /**
-   * Administrators manage employees and technicians; only root can create or promote
-   * administrators, and nobody can create a second root.
+   * Administrators and root can create or promote any role except root: nobody can create a second
+   * root. Once someone is an administrator only root can change or demote them.
    */
-  private static void requireMayGrant(Role actor, Role target) {
+  private static void requireMayGrant(Role target) {
     if (target == Role.ROOT) {
       throw new IllegalArgumentException("There can only be one root account");
-    }
-    if (target == Role.ADMINISTRATOR && actor != Role.ROOT) {
-      throw new UnauthorizedOperationException("Only root can grant administrator access");
     }
   }
 
@@ -480,7 +480,9 @@ public class UserApplicationService {
         skills,
         user.isMustChangePassword(),
         user.getGoogleSub() != null,
-        user.getPasswordHash() != null);
+        user.getPasswordHash() != null,
+        user.getRole() == Role.TECHNICIAN && user.isTeamLead(),
+        user.getAvatar());
   }
 
   private TechnicianResponse toTechnicianResponse(UserEntity tech) {

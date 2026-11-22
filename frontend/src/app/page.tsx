@@ -201,8 +201,9 @@ export default function IncidentsDashboardPage() {
   }
 
   const filtered = Object.values(filters).some(Boolean);
-  const title = admin ? "All incidents" : role === "TECHNICIAN" ? "My queue" : "My tickets";
-  const subtitle = admin
+  const seesAll = admin || Boolean(user?.teamLead);
+  const title = seesAll ? "All incidents" : role === "TECHNICIAN" ? "My queue" : "My tickets";
+  const subtitle = seesAll
     ? "Every ticket across the organisation."
     : role === "TECHNICIAN"
       ? "Tickets assigned to you."
@@ -364,9 +365,17 @@ export default function IncidentsDashboardPage() {
                       <tr key={ticket.id}>
                         <td className="col-id">{ticket.incidentNumber}</td>
                         <td className="col-title row-link-cell">
-                          <Link className="title-link" href={`/incidents/${ticket.id}`}>
+                          <Link
+                            className="title-link"
+                            href={
+                              ticket.joined
+                                ? `/issues?${new URLSearchParams({ q: ticket.incidentNumber, open: ticket.id })}`
+                                : `/incidents/${ticket.id}`
+                            }
+                          >
                             {ticket.title}
                           </Link>
+                          {ticket.joined && <span className="muted"> · You’re following this</span>}
                         </td>
                         <td className="col-nowrap">
                           <StatusBadge status={ticket.status} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+import { showToast } from "@/components/LiveUpdates";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { UpdateEntry } from "@/components/UpdateEntry";
@@ -40,11 +41,51 @@ export default function IssuesPage() {
   const [services, setServices] = useState<ItService[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, PublicIssue | "error">>({});
+  const [affectedBusy, setAffectedBusy] = useState<string | null>(null);
+
+  /** Joins (or leaves) an issue in place; the reporter is already counted and cannot leave. */
+  const toggleAffected = async (issue: PublicIssue) => {
+    setAffectedBusy(issue.id);
+    try {
+      const updated = issue.affectedByMe
+        ? await api.unmarkAffected(issue.id)
+        : await api.markAffected(issue.id);
+      setDetails((d) => ({ ...d, [issue.id]: updated }));
+      showToast({
+        title: issue.affectedByMe
+          ? updated.affectedByMe
+            ? "You're still on this issue"
+            : "Removed from this issue"
+          : "Added to this issue",
+        message: updated.affectedByMe ? "You'll be told when it's fixed." : undefined,
+        tone: "success",
+      });
+    } catch (err: unknown) {
+      showToast({
+        title: err instanceof Error ? err.message : "Couldn't update that issue.",
+        tone: "error",
+      });
+    } finally {
+      setAffectedBusy(null);
+    }
+  };
 
   // Links such as "Known issue on <service>" from the report form open this list filtered.
   useEffect(() => {
-    const serviceId = new URLSearchParams(window.location.search).get("serviceId");
+    const params = new URLSearchParams(window.location.search);
+    const serviceId = params.get("serviceId");
     if (serviceId) setFilters((f) => ({ ...f, serviceId }));
+    // "My tickets" links to a followed issue by number, opened.
+    const q = params.get("q");
+    if (q) setFilters((f) => ({ ...f, searchText: q }));
+    const open = params.get("open");
+    if (open) {
+      setOpenId(open);
+      api
+        .getIssue(open)
+        .then((issue) => setDetails((d) => ({ ...d, [open]: issue })))
+        .catch(() => setDetails((d) => ({ ...d, [open]: "error" })));
+    }
   }, []);
 
   useEffect(() => {
@@ -231,18 +272,19 @@ export default function IssuesPage() {
                               {detail.serviceName && ` · ${detail.serviceName}`}
                               {detail.handledBy && ` · Handled by ${detail.handledBy}`}
                             </p>
+                            <p className="field-hint">
+                              {detail.affectedCount} affected
+                              {detail.affectedByMe ? " · including you" : ""}
+                            </p>
                             {!["RESOLVED", "CLOSED", "CANCELLED"].includes(detail.status) && (
-                              <Link
+                              <button
+                                type="button"
                                 className="btn btn-sm"
-                                href={`/incidents/new?${new URLSearchParams({
-                                  related: detail.incidentNumber,
-                                  relatedId: detail.id,
-                                  title: detail.title,
-                                  category: detail.category,
-                                })}`}
+                                disabled={affectedBusy === detail.id}
+                                onClick={() => toggleAffected(detail)}
                               >
-                                This affects me too
-                              </Link>
+                                {detail.affectedByMe ? "Remove me" : "This affects me too"}
+                              </button>
                             )}
                           </div>
                           {detail.updates.length === 0 ? (

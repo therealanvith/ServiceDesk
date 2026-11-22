@@ -6,6 +6,7 @@ import com.servicedesk.domain.incident.Category;
 import com.servicedesk.domain.incident.Impact;
 import com.servicedesk.domain.incident.Urgency;
 import com.servicedesk.domain.intelligence.IncidentAssistant;
+import com.servicedesk.domain.intelligence.KnowledgeBase;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -95,7 +96,9 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
             + " is blocked (LOW can wait, MEDIUM slowed down, HIGH cannot work now). serviceName:"
             + " the affected service from this list, or null: "
             + serviceNames
-            + ". reason: one sentence, under 25 words, explaining the choice.\n"
+            + ". reason: one sentence, under 25 words, explaining the choice. itRelated: false"
+            + " when the text is not about computers, software, networks, accounts, devices or"
+            + " other office technology (for example a cooking or personal question).\n"
             + ticket(draft.title(), draft.description());
     Map<String, Object> schema =
         object(
@@ -104,8 +107,9 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
                 "impact", enumOf(Impact.values()),
                 "urgency", enumOf(Urgency.values()),
                 "serviceName", Map.of("type", "STRING", "nullable", true),
-                "reason", Map.of("type", "STRING")),
-            List.of("category", "impact", "urgency", "reason"));
+                "reason", Map.of("type", "STRING"),
+                "itRelated", Map.of("type", "BOOLEAN")),
+            List.of("category", "impact", "urgency", "reason", "itRelated"));
     JsonNode out = generate(prompt, schema);
     String service = text(out, "serviceName", 120);
     return new TriageSuggestion(
@@ -113,7 +117,8 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
         enumValue(Impact.class, required(out, "impact")),
         enumValue(Urgency.class, required(out, "urgency")),
         service != null && serviceNames.contains(service) ? service : null,
-        requiredText(out, "reason"));
+        requiredText(out, "reason"),
+        out.path("itRelated").asBoolean(true));
   }
 
   @Override
@@ -122,7 +127,10 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
         "Before this person files a ticket, suggest 2 to 4 short, safe steps they can try"
             + " themselves (no admin rights, nothing that risks data). Use the fixes that worked"
             + " for similar problems where they apply. Do not mention other tickets or people."
-            + " summary: one encouraging sentence.\nFixes that worked before: "
+            + " summary: one encouraging sentence. itRelated: false when the text is not about"
+            + " computers, software, networks, accounts, devices or other office technology; then"
+            + " steps must be empty and summary says this is not an IT problem.\nFixes that worked"
+            + " before: "
             + fixes(pastFixes, false)
             + "\n"
             + ticket(draft.title(), draft.description());
@@ -150,6 +158,47 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
     JsonNode out =
         generate(prompt, object(Map.of("summary", Map.of("type", "STRING")), List.of("summary")));
     return requiredText(out, "summary");
+  }
+
+  @Override
+  public String chat(List<ChatTurn> conversation, List<String> context) {
+    List<String> lines = new ArrayList<>();
+    for (ChatTurn turn : conversation) {
+      lines.add((turn.fromUser() ? "User: " : "Assistant: ") + clean(turn.text(), 1000));
+    }
+    String last =
+        conversation.stream()
+            .filter(ChatTurn::fromUser)
+            .reduce((a, b) -> b)
+            .map(ChatTurn::text)
+            .orElse("");
+    List<String> known = new ArrayList<>();
+    KnowledgeBase.search(last, 2)
+        .forEach(
+            a ->
+                known.add(
+                    a.title() + ": " + a.summary() + " Steps: " + String.join(" ", a.steps())));
+    String prompt =
+        "You are the help desk chat assistant for office staff. Answer the last user message in"
+            + " at most 120 words, in friendly plain English. Give safe steps only (no admin"
+            + " rights, nothing that risks data). If the problem is not solved by simple steps, tell"
+            + " them to report it from the New ticket page. If the message is not about"
+            + " technology, say politely that you can only help with IT problems. You may use the person's own tickets"
+            + " and the knowledge notes below. Do not invent ticket numbers or policies. reply:"
+            + " your answer, as plain text without markdown headings.\nTheir tickets: "
+            + (context.isEmpty() ? "none" : String.join("; ", context))
+            + "\nKnowledge notes: "
+            + (known.isEmpty() ? "none" : String.join(" | ", known))
+            + "\n<chat>\n"
+            + String.join("\n", lines)
+            + "\n</chat>";
+    JsonNode out =
+        generate(prompt, object(Map.of("reply", Map.of("type", "STRING")), List.of("reply")));
+    String reply = clean(required(out, "reply"), 1500);
+    if (reply.isEmpty()) {
+      throw new AssistantUnavailableException("Gemini returned an empty reply");
+    }
+    return reply;
   }
 
   // --- Request building ---
@@ -234,7 +283,8 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
     return object(
         Map.of(
             "summary", Map.of("type", "STRING"),
-            "steps", Map.of("type", "ARRAY", "items", Map.of("type", "STRING"))),
+            "steps", Map.of("type", "ARRAY", "items", Map.of("type", "STRING")),
+            "itRelated", Map.of("type", "BOOLEAN")),
         List.of("summary", "steps"));
   }
 
@@ -249,6 +299,9 @@ public class GeminiAssistantAdapter implements IncidentAssistant {
   // --- Response checking ---
 
   private static AssistantAdvice advice(JsonNode out) {
+    if (!out.path("itRelated").asBoolean(true)) {
+      return new AssistantAdvice(requiredText(out, "summary"), List.of(), false);
+    }
     JsonNode steps = out.get("steps");
     if (steps == null || !steps.isArray() || steps.isEmpty()) {
       throw new AssistantUnavailableException("Gemini returned no steps");

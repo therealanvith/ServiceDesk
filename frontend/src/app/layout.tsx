@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { AppShell } from "@/components/AppShell";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { LiveUpdates } from "@/components/LiveUpdates";
-import { Navbar } from "@/components/Navbar";
 import { themeInitScript } from "@/components/ThemeToggle";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -25,10 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <a href="#main-content" className="skip-link">
             Skip to content
           </a>
-          <Navbar />
-          <main id="main-content" className="page">
-            {children}
-          </main>
+          <AppShell>{children}</AppShell>
           <LiveUpdates />
           <KeyboardShortcuts />
         </AuthProvider>

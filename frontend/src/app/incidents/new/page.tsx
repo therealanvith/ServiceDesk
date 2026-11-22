@@ -18,7 +18,7 @@ import {
 import { CATEGORY_LABELS, CRITICALITY_LABELS, SERVICE_HEALTH_LABELS } from "@/lib/labels";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /** Wait for a pause in typing before asking the server for suggestions. */
 const DRAFT_DEBOUNCE_MS = 500;
@@ -32,9 +32,6 @@ export default function NewIncidentPage() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [categoryTouched, setCategoryTouched] = useState(false);
-  // Set synchronously by the "affects me too" prefill, which runs in the same pass as the draft
-  // effect below; state alone would still read "untouched" there and reset the category.
-  const categoryChosen = useRef(false);
   const [impact, setImpact] = useState<Impact>("MEDIUM");
   const [urgency, setUrgency] = useState<Urgency>("MEDIUM");
   const [serviceId, setServiceId] = useState("");
@@ -48,30 +45,9 @@ export default function NewIncidentPage() {
   const [duplicates, setDuplicates] = useState<SimilarIncident[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [relatedNumber, setRelatedNumber] = useState<string | null>(null);
-  const [relatedId, setRelatedId] = useState<string | null>(null);
+  const [finishedKey, setFinishedKey] = useState(0);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
   const [triage, setTriage] = useState<TriageSuggestion | null>(null);
-
-  // "This affects me too" on All issues opens this page pre-filled with a reference to the issue.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const related = params.get("related");
-    if (!related) return;
-    const relatedTitle = params.get("title") ?? "";
-    setRelatedNumber(related);
-    setRelatedId(params.get("relatedId"));
-    setTitle(relatedTitle);
-    setDescription(`I'm affected by the same problem as ${related}${relatedTitle ? ` (${relatedTitle})` : ""}.
-
-`);
-    const relatedCategory = params.get("category") as Category | null;
-    if (relatedCategory && relatedCategory in CATEGORY_LABELS) {
-      categoryChosen.current = true;
-      setCategory(relatedCategory);
-      setCategoryTouched(true);
-    }
-  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: servicesKey re-runs the load for "Try again"
   useEffect(() => {
@@ -113,7 +89,7 @@ export default function NewIncidentPage() {
   useEffect(() => {
     setSuggestion(null);
     setDuplicates([]);
-    if (!categoryTouched && !categoryChosen.current) setCategory(DEFAULT_CATEGORY);
+    if (!categoryTouched) setCategory(DEFAULT_CATEGORY);
     if (!user || (title.trim().length < 4 && description.trim().length < 10)) {
       return;
     }
@@ -124,7 +100,7 @@ export default function NewIncidentPage() {
         .then((s) => {
           if (!active) return;
           setSuggestion(s.category ? s : null);
-          if (s.category && !categoryTouched && !categoryChosen.current) setCategory(s.category);
+          if (s.category && !categoryTouched) setCategory(s.category);
         })
         .catch(() => {});
       api
@@ -167,7 +143,6 @@ export default function NewIncidentPage() {
           triage.impact === impact &&
           triage.urgency === urgency &&
           (triage.serviceId ?? "") === serviceId,
-        relatedIncidentId: relatedId ?? undefined,
       });
       router.push(`/incidents/${created.id}`);
     } catch (err: unknown) {
@@ -189,13 +164,7 @@ export default function NewIncidentPage() {
       <div className="page-header">
         <div>
           <h1>Report an issue</h1>
-          <p>
-            {relatedNumber
-              ? relatedId
-                ? `Your report will be linked to ${relatedNumber} so you hear when it’s fixed.`
-                : `Your report will mention ${relatedNumber} so staff can see it affects you too.`
-              : "The more detail you give, the faster it gets fixed."}
-          </p>
+          <p>The more detail you give, the faster it gets fixed.</p>
         </div>
       </div>
 
@@ -224,6 +193,7 @@ export default function NewIncidentPage() {
               maxLength={10000}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => setFinishedKey((k) => k + 1)}
               placeholder="Where is it, who’s affected, and what have you already tried?"
             />
           </label>
@@ -231,6 +201,7 @@ export default function NewIncidentPage() {
           <AssistantHelper
             title={title}
             description={description}
+            finishedKey={finishedKey}
             onApply={(s) => {
               setTriage(s);
               setCategory(s.category);

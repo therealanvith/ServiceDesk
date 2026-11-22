@@ -9,7 +9,7 @@
 ### 1.1 User Management & Authentication (FR-USER)
 - **FR-USER-01**: The system must support four roles: `EMPLOYEE`, `TECHNICIAN`, `ADMINISTRATOR` and a single `ROOT` superuser.
 - **FR-USER-02**: Users must be able to sign in with a username and password or with their Google account (OAuth 2.0 / OpenID Connect), and employees must be able to register themselves. Sessions use JWTs.
-- **FR-USER-03**: Administrators must be able to list users, create accounts, change roles between employee and technician, deactivate and reactivate accounts, and edit technician skills. Only root can grant or remove administrator access.
+- **FR-USER-03**: Administrators must be able to list users, create accounts, change roles between employee, technician and administrator, deactivate and reactivate accounts, and edit technician skills. Administrators can grant administrator access; only root can change or remove it afterwards.
 - **FR-USER-04**: The root account is created from environment configuration on first start; there can only ever be one.
 - **FR-USER-05**: The sign-up page must offer "Sign up with Google" when Google sign-in is configured; a first Google sign-in creates an employee account.
 - **FR-USER-06**: When someone signs up (password or first Google sign-in), every active administrator and root must get a `NEW_USER` notification so they can review the new account's role.

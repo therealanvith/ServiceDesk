@@ -11,6 +11,8 @@ interface StateActionsProps {
   currentUserRole: string;
   isReporter: boolean;
   isAssignee: boolean;
+  /** A technician marked as team lead may assign and reassign like an administrator. */
+  isTeamLead?: boolean;
   onUpdate: (updated: IncidentDetail) => void;
   /**
    * Opens a dialog from elsewhere on the page (the pinned question's Reply, or the assistant's
@@ -36,6 +38,7 @@ export function StateActions({
   currentUserRole,
   isReporter,
   isAssignee,
+  isTeamLead = false,
   onUpdate,
   dialogRequest,
 }: StateActionsProps) {
@@ -49,9 +52,9 @@ export function StateActions({
   const [selectedTechId, setSelectedTechId] = useState("");
   const [technicians, setTechnicians] = useState<TechnicianItem[]>([]);
 
-  // Assigning is an administrator decision; technicians only see their own tickets.
+  // Assigning is for administrators and the team lead; other technicians only see their own tickets.
   const isAdmin = currentUserRole === "ADMINISTRATOR" || currentUserRole === "ROOT";
-  const isTechOrAdmin = isAdmin;
+  const isTechOrAdmin = isAdmin || (currentUserRole === "TECHNICIAN" && isTeamLead);
   // Mirrors the backend: only the assigned technician (or an admin) works the ticket.
   const canWork = isAdmin || (currentUserRole === "TECHNICIAN" && isAssignee);
   const status = incident.status;

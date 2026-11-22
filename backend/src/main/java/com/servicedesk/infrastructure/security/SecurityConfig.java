@@ -120,7 +120,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/v1/users/me", "/api/v1/users/me/**")
                     .authenticated()
                     .requestMatchers(HttpMethod.GET, "/api/v1/users/technicians")
-                    .hasAnyRole("ADMINISTRATOR", "ROOT")
+                    .hasAnyRole("TECHNICIAN", "ADMINISTRATOR", "ROOT")
                     .requestMatchers(HttpMethod.PUT, "/api/v1/users/*/skills")
                     .hasAnyRole("ADMINISTRATOR", "ROOT")
                     .requestMatchers("/api/v1/users", "/api/v1/users/**")

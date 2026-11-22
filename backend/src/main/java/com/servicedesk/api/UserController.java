@@ -12,6 +12,8 @@ import com.servicedesk.api.dto.UpdateUserRoleRequest;
 import com.servicedesk.api.dto.UserAccountResponse;
 import com.servicedesk.api.dto.UserProfileResponse;
 import com.servicedesk.application.UserApplicationService;
+import com.servicedesk.domain.exception.UnauthorizedOperationException;
+import com.servicedesk.domain.user.Role;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
@@ -59,8 +61,13 @@ public class UserController {
   }
 
   @GetMapping("/technicians")
-  @PreAuthorize("hasAnyRole('ADMINISTRATOR', 'ROOT')")
-  public ResponseEntity<List<TechnicianResponse>> listTechnicians() {
+  @PreAuthorize("hasAnyRole('TECHNICIAN', 'ADMINISTRATOR', 'ROOT')")
+  public ResponseEntity<List<TechnicianResponse>> listTechnicians(Principal principal) {
+    // Technicians may see the list only when they lead the team (to reassign tickets).
+    UserProfileResponse caller = userService.getUserProfile(principal.getName());
+    if (caller.role() == Role.TECHNICIAN && !caller.teamLead()) {
+      throw new UnauthorizedOperationException("Only a team lead can see the technician list");
+    }
     List<TechnicianResponse> techs = userService.listTechnicians();
     return ResponseEntity.ok(techs);
   }
